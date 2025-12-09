@@ -60,6 +60,7 @@ class AutoAnswerRequest(BaseModel):
     reply_by: Optional[str] = None  # None이면 설정값 사용
     auto_generate: bool = True  # ChatGPT로 자동 생성 여부
     credentials: Optional[CoupangAPICredentials] = None  # API 인증 정보
+    account_id: Optional[int] = None  # Coupang 계정 ID (DB에서 조회)
 
 
 @router.post("/test-connection")
@@ -338,6 +339,23 @@ async def auto_answer_inquiries(request: AutoAnswerRequest, http_request: Reques
             start_date = start_date_obj.strftime("%Y-%m-%d")
             logger.info(f"조정된 날짜 범위: {start_date} ~ {end_date}")
 
+        # account_id로 DB에서 계정 정보 가져오기
+        selected_account = None
+        if request.account_id:
+            from ..models.coupang_account import CoupangAccount
+            selected_account = db.query(CoupangAccount).filter(CoupangAccount.id == request.account_id).first()
+            if selected_account:
+                logger.info(f"계정 ID {request.account_id}로 계정 조회: {selected_account.name} (vendor: {selected_account.vendor_id})")
+                # credentials 객체 생성
+                request.credentials = CoupangAPICredentials(
+                    access_key=selected_account.access_key,
+                    secret_key=selected_account.secret_key,
+                    vendor_id=selected_account.vendor_id,
+                    wing_username=selected_account.wing_username
+                )
+            else:
+                logger.warning(f"계정 ID {request.account_id}를 찾을 수 없습니다. 환경 변수 사용")
+
         # reply_by 설정: wing_username 우선, 그 다음 환경변수, 마지막으로 vendor_id
         reply_by = None
         if request.credentials and request.credentials.wing_username:
@@ -575,6 +593,23 @@ async def auto_answer_call_center_inquiries(http_request: Request, request: Auto
         # 기본 날짜 설정 (3일)
         end_date = datetime.now().strftime("%Y-%m-%d")
         start_date = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
+
+        # account_id로 DB에서 계정 정보 가져오기
+        selected_account = None
+        if request.account_id:
+            from ..models.coupang_account import CoupangAccount
+            selected_account = db.query(CoupangAccount).filter(CoupangAccount.id == request.account_id).first()
+            if selected_account:
+                logger.info(f"계정 ID {request.account_id}로 계정 조회: {selected_account.name} (vendor: {selected_account.vendor_id})")
+                # credentials 객체 생성
+                request.credentials = CoupangAPICredentials(
+                    access_key=selected_account.access_key,
+                    secret_key=selected_account.secret_key,
+                    vendor_id=selected_account.vendor_id,
+                    wing_username=selected_account.wing_username
+                )
+            else:
+                logger.warning(f"계정 ID {request.account_id}를 찾을 수 없습니다. 환경 변수 사용")
 
         # reply_by 설정: wing_username 우선, 그 다음 환경변수, 마지막으로 vendor_id
         reply_by = None
