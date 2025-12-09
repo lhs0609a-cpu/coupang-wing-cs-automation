@@ -67,10 +67,16 @@
 }
 
 .account-select option {
-  background: #2d2d3f;
-  color: #ffffff;
+  background: #4a4a6a !important;
+  color: #ffffff !important;
   padding: 12px;
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.account-select option:hover {
+  background: #8b5cf6 !important;
+  color: #ffffff !important;
 }
 
 .refresh-btn {
@@ -620,10 +626,16 @@
 }
 
 .select-with-button select option {
-  background: #2d2d3f;
-  color: #ffffff;
+  background: #4a4a6a !important;
+  color: #ffffff !important;
   padding: 12px;
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.select-with-button select option:hover {
+  background: #34d399 !important;
+  color: #000000 !important;
 }
 
 .load-coupons-btn {
@@ -698,10 +710,16 @@
 }
 
 .option-input select option {
-  background: #2d2d3f;
-  color: #ffffff;
+  background: #4a4a6a !important;
+  color: #ffffff !important;
   padding: 12px;
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.option-input select option:hover {
+  background: #fbbf24 !important;
+  color: #000000 !important;
 }
 
 .checkbox-row {
