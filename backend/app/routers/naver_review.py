@@ -118,13 +118,20 @@ def get_status():
     }
 
 
-@router.get("/selenium-available")
-def check_selenium():
-    """Selenium 사용 가능 여부 확인"""
+@router.get("/playwright-available")
+def check_playwright():
+    """Playwright 사용 가능 여부 확인"""
     return {
         "available": SELENIUM_AVAILABLE,
-        "message": "Selenium is available" if SELENIUM_AVAILABLE else "Selenium is not installed"
+        "message": "Playwright is available" if SELENIUM_AVAILABLE else "Playwright is not installed"
     }
+
+
+# 하위 호환성을 위해 기존 엔드포인트 유지
+@router.get("/selenium-available")
+def check_selenium():
+    """Selenium 사용 가능 여부 확인 (deprecated - use /playwright-available)"""
+    return check_playwright()
 
 
 @router.post("/start")
@@ -137,7 +144,7 @@ def start_automation(
     if not SELENIUM_AVAILABLE:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Selenium이 설치되지 않았습니다. 서버에서 Selenium을 설치해주세요."
+            detail="Playwright가 설치되지 않았습니다. 서버에서 'playwright install chromium'을 실행해주세요."
         )
 
     # 이미 실행 중인지 확인
