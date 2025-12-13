@@ -137,9 +137,11 @@ const NaverReviewManagement = ({ apiBaseUrl, showNotification }) => {
   const loadNaverAccounts = async () => {
     try {
       const response = await axios.get(`${apiBaseUrl}/naver-accounts`)
-      setNaverAccounts(response.data)
-      if (response.data.length > 0 && !selectedAccountId) {
-        setSelectedAccountId(response.data[0].id)
+      // API returns {success, count, data: [...]}
+      const accounts = response.data.data || response.data || []
+      setNaverAccounts(accounts)
+      if (accounts.length > 0 && !selectedAccountId) {
+        setSelectedAccountId(accounts[0].id)
       }
     } catch (error) {
       console.error('Failed to load naver accounts:', error)
