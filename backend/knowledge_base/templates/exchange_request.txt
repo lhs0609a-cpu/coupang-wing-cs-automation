@@ -1,0 +1,22 @@
+안녕하세요, 고객님.
+쿠팡 판매자입니다.
+
+{{customer_name}}님의 교환 요청을 확인하였습니다.
+
+[교환 정보]
+- 주문번호: {{order_number}}
+- 상품명: {{product_name}}
+- 교환 사유: {{exchange_reason}}
+
+[교환 절차]
+1. 기존 상품 반송 ({{return_pickup_date}} 예정)
+2. 상품 확인 (1-2일)
+3. 새 상품 발송 ({{new_product_delivery_date}} 예정)
+
+{{exchange_details}}
+
+{{stock_status}}
+
+교환 상품은 확인 후 최대한 빠르게 발송해 드리겠습니다.
+
+감사합니다.

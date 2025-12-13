@@ -1,0 +1,33 @@
+{
+  "title": "교환 정책",
+  "version": "1.0",
+  "last_updated": "2024-01-01",
+  "sections": {
+    "exchange_period": {
+      "title": "교환 가능 기간",
+      "content": "상품 수령 후 7일 이내 교환 요청 가능합니다."
+    },
+    "exchange_process": {
+      "title": "교환 절차",
+      "steps": [
+        "주문 내역에서 교환 신청",
+        "교환 사유 및 상품 선택",
+        "기존 상품 반송",
+        "새 상품 발송 (5-7일 소요)"
+      ]
+    },
+    "exchange_conditions": {
+      "title": "교환 조건",
+      "requirements": [
+        "상품 미사용/미개봉 상태",
+        "상품 태그 및 라벨 보존",
+        "구성품 전부 포함"
+      ]
+    },
+    "size_color_exchange": {
+      "title": "사이즈/색상 교환",
+      "content": "사이즈, 색상 교환은 재고가 있는 경우에만 가능합니다.",
+      "note": "재고 없을 시 환불 처리됩니다."
+    }
+  }
+}
