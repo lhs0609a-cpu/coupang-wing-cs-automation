@@ -1,0 +1,41 @@
+# Fly.io 배포 설정 파일
+app = "coupang-wing-cs-backend"
+primary_region = "nrt"  # 도쿄 리전 (한국과 가까움)
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  ENVIRONMENT = "production"
+  LOG_LEVEL = "INFO"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "10s"
+    path = "/health"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 2048
+
+[deploy]
+  strategy = "rolling"
+
+[[mounts]]
+  source = "coupang_data"
+  destination = "/data"
+
+[[statics]]
+  guest_path = "/app/static"
+  url_prefix = "/"
