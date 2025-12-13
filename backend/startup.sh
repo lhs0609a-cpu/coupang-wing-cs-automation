@@ -3,11 +3,11 @@
 
 echo "Starting Coupang Wing CS Backend..."
 
-# Run database migration
+# Run database migration (ignore errors to allow server to start)
 echo "Running database migration..."
-python add_receiver_columns.py
-python migrate_account_sets_table.py
-python migrate_coupon_tables.py
+python add_receiver_columns.py || echo "Migration 1 skipped"
+python migrate_account_sets_table.py || echo "Migration 2 skipped"
+python migrate_coupon_tables.py || echo "Migration 3 skipped"
 
 # Start Xvfb for headless Chrome
 echo "Starting Xvfb..."
