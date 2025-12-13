@@ -11,6 +11,9 @@ import NaverAccountManagement from './components/NaverAccountManagement'
 import NaverOAuthCallback from './components/NaverOAuthCallback'
 import PromotionManagement from './components/PromotionManagement'
 import NaverReviewManagement from './components/NaverReviewManagement'
+import NaverPayDelivery from './components/NaverPayDelivery'
+import ProductSearch from './components/ProductSearch'
+import UploadMonitoring from './components/UploadMonitoring'
 import ServerConnection from './components/ServerConnection'
 import { X, CheckCircle, AlertCircle } from 'lucide-react'
 import { getApiBaseUrl } from './utils/apiConfig'
@@ -185,6 +188,21 @@ function AppContent() {
             </motion.div>
           )}
 
+          {activeTab === 'upload-monitoring' && (
+            <motion.div
+              key="upload-monitoring"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <UploadMonitoring
+                apiBaseUrl={apiBaseUrl}
+                showNotification={showNotification}
+              />
+            </motion.div>
+          )}
+
           {activeTab === 'inquiries' && (
             <motion.div
               key="inquiries"
@@ -311,7 +329,36 @@ function AppContent() {
             </motion.div>
           )}
 
-          {(activeTab === 'analytics' || activeTab === 'reports' || activeTab === 'settings') && (
+          {activeTab === 'naverpay-delivery' && (
+            <motion.div
+              key="naverpay-delivery"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <NaverPayDelivery
+                apiBaseUrl={apiBaseUrl}
+                showNotification={showNotification}
+              />
+            </motion.div>
+          )}
+
+          {activeTab === 'product-search' && (
+            <motion.div
+              key="product-search"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <ProductSearch
+                showNotification={showNotification}
+              />
+            </motion.div>
+          )}
+
+          {activeTab === 'settings' && (
             <motion.div
               key={activeTab}
               initial={{ opacity: 0, x: -20 }}

@@ -10,7 +10,7 @@ import sys
 
 from .config import settings
 from .database import init_db, engine
-from .routers import inquiries, responses, automation, wing_web, advanced, ux_features, websocket, monitoring, batch, port_management, coupang_api, coupang_accounts, return_management, naver_api, naver_accounts, account_sets, promotion, naver_review
+from .routers import inquiries, responses, automation, wing_web, advanced, ux_features, websocket, monitoring, batch, port_management, coupang_api, coupang_accounts, return_management, naver_api, naver_accounts, account_sets, promotion, naver_review, naverpay_delivery, naver_shopping, upload_monitoring
 from .scheduler import get_scheduler
 from .services.monitoring import get_monitor
 
@@ -168,6 +168,9 @@ app.include_router(naver_accounts.router, prefix="/api")
 app.include_router(account_sets.router, prefix="/api")
 app.include_router(promotion.router, prefix="/api")
 app.include_router(naver_review.router, prefix="/api")
+app.include_router(naverpay_delivery.router, prefix="/api")
+app.include_router(naver_shopping.router, prefix="/api")
+app.include_router(upload_monitoring.router, prefix="/api")
 
 
 @app.get("/", response_class=HTMLResponse)
