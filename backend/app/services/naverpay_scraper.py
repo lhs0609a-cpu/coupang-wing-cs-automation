@@ -406,10 +406,92 @@ class NaverPayScraper:
             # 택배사: .Courier_company__WpuEg
             # 송장번호: .Courier_number__5MVoy
 
-            # 방법 1: 직접 택배사/송장번호 요소 찾기
-            courier_elements = await self.page.query_selector_all('[class*="Courier_company"], .Courier_company__WpuEg')
-            tracking_elements = await self.page.query_selector_all('[class*="Courier_number"], .Courier_number__5MVoy')
-            recipient_elements = await self.page.query_selector_all('[class*="DeliveryContent_name"], .DeliveryContent_name__fyClB')
+            # 페이지의 실제 클래스 구조 확인
+            try:
+                class_debug = await self.page.evaluate('''
+                    () => {
+                        const result = {
+                            courierClasses: [],
+                            deliveryClasses: [],
+                            nameClasses: [],
+                            allRelevant: []
+                        };
+
+                        document.querySelectorAll('*[class]').forEach(el => {
+                            const cls = el.className;
+                            if (typeof cls === 'string') {
+                                if (cls.includes('Courier') || cls.includes('courier')) {
+                                    result.courierClasses.push(cls.substring(0, 100));
+                                }
+                                if (cls.includes('Delivery') || cls.includes('delivery')) {
+                                    result.deliveryClasses.push(cls.substring(0, 100));
+                                }
+                                if (cls.includes('name') || cls.includes('Name')) {
+                                    result.nameClasses.push(cls.substring(0, 100));
+                                }
+                                // 송장번호 패턴
+                                if (cls.includes('number') || cls.includes('Number') || cls.includes('invoice') || cls.includes('Invoice')) {
+                                    result.allRelevant.push(cls.substring(0, 100));
+                                }
+                            }
+                        });
+
+                        // 중복 제거
+                        result.courierClasses = [...new Set(result.courierClasses)].slice(0, 10);
+                        result.deliveryClasses = [...new Set(result.deliveryClasses)].slice(0, 10);
+                        result.nameClasses = [...new Set(result.nameClasses)].slice(0, 10);
+                        result.allRelevant = [...new Set(result.allRelevant)].slice(0, 10);
+
+                        return result;
+                    }
+                ''')
+                scrape_logger.info(f"Courier 관련 클래스: {class_debug.get('courierClasses', [])}")
+                scrape_logger.info(f"Delivery 관련 클래스: {class_debug.get('deliveryClasses', [])}")
+                scrape_logger.info(f"Name 관련 클래스: {class_debug.get('nameClasses', [])}")
+                scrape_logger.info(f"Number/Invoice 관련 클래스: {class_debug.get('allRelevant', [])}")
+            except Exception as e:
+                scrape_logger.error(f"클래스 디버깅 오류: {e}")
+
+            # 방법 1: 직접 택배사/송장번호 요소 찾기 (다양한 셀렉터 시도)
+            courier_selectors = [
+                '[class*="Courier_company"]',
+                '[class*="courier_company"]',
+                '[class*="company"]',
+                '.Courier_company__WpuEg'
+            ]
+            tracking_selectors = [
+                '[class*="Courier_number"]',
+                '[class*="courier_number"]',
+                '[class*="invoice"]',
+                '.Courier_number__5MVoy'
+            ]
+            recipient_selectors = [
+                '[class*="DeliveryContent_name"]',
+                '[class*="delivery_name"]',
+                '[class*="name__"]',
+                '.DeliveryContent_name__fyClB'
+            ]
+
+            courier_elements = []
+            for sel in courier_selectors:
+                courier_elements = await self.page.query_selector_all(sel)
+                if courier_elements:
+                    scrape_logger.info(f"택배사 셀렉터 '{sel}'로 {len(courier_elements)}개 발견")
+                    break
+
+            tracking_elements = []
+            for sel in tracking_selectors:
+                tracking_elements = await self.page.query_selector_all(sel)
+                if tracking_elements:
+                    scrape_logger.info(f"송장번호 셀렉터 '{sel}'로 {len(tracking_elements)}개 발견")
+                    break
+
+            recipient_elements = []
+            for sel in recipient_selectors:
+                recipient_elements = await self.page.query_selector_all(sel)
+                if recipient_elements:
+                    scrape_logger.info(f"수령인 셀렉터 '{sel}'로 {len(recipient_elements)}개 발견")
+                    break
 
             scrape_logger.info(f"직접 셀렉터 결과 - 택배사: {len(courier_elements)}, 송장: {len(tracking_elements)}, 수령인: {len(recipient_elements)}")
 
