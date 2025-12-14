@@ -401,53 +401,121 @@ class NaverPayScraper:
 
             yield {"type": "status", "message": f"총 {len(items)}개 항목 발견, 분석 중..."}
 
-            for idx, item in enumerate(items):
-                try:
-                    # 배송 상태 확인
-                    status_elem = await item.query_selector('[class*="status"], [class*="state"], .delivery_state')
-                    if status_elem:
-                        status_text = await status_elem.inner_text()
-                        if '배송중' not in status_text and '배송 중' not in status_text:
-                            continue
+            # 새로운 네이버페이 셀렉터로 직접 추출 시도
+            # 수령인: .DeliveryContent_name__fyClB
+            # 택배사: .Courier_company__WpuEg
+            # 송장번호: .Courier_number__5MVoy
 
-                    # 상품명
-                    product_elem = await item.query_selector('[class*="product"], [class*="goods"], .goods_name')
-                    product_name = await product_elem.inner_text() if product_elem else ""
+            # 방법 1: 직접 택배사/송장번호 요소 찾기
+            courier_elements = await self.page.query_selector_all('[class*="Courier_company"], .Courier_company__WpuEg')
+            tracking_elements = await self.page.query_selector_all('[class*="Courier_number"], .Courier_number__5MVoy')
+            recipient_elements = await self.page.query_selector_all('[class*="DeliveryContent_name"], .DeliveryContent_name__fyClB')
 
-                    # 수령인
-                    recipient_elem = await item.query_selector('[class*="receiver"], [class*="recipient"], .receiver_name')
-                    recipient = await recipient_elem.inner_text() if recipient_elem else ""
+            scrape_logger.info(f"직접 셀렉터 결과 - 택배사: {len(courier_elements)}, 송장: {len(tracking_elements)}, 수령인: {len(recipient_elements)}")
 
-                    # 택배사 및 송장번호
-                    tracking_elem = await item.query_selector('[class*="tracking"], [class*="invoice"], .delivery_info')
-                    if tracking_elem:
-                        tracking_text = await tracking_elem.inner_text()
-                        courier, tracking_number = self._parse_tracking_info(tracking_text)
-                    else:
-                        courier, tracking_number = "", ""
+            # 수령인 정보가 있는 경우 (송장번호와 매칭)
+            if tracking_elements:
+                for idx, tracking_elem in enumerate(tracking_elements):
+                    try:
+                        tracking_number = await tracking_elem.inner_text()
+                        tracking_number = tracking_number.strip()
 
-                    if tracking_number:
-                        delivery = DeliveryItem(
-                            recipient=recipient.strip(),
-                            courier=courier.strip(),
-                            tracking_number=tracking_number.strip(),
-                            product_name=product_name.strip()
-                        )
-                        deliveries.append(delivery)
+                        # 같은 인덱스의 택배사 가져오기
+                        courier = ""
+                        if idx < len(courier_elements):
+                            courier = await courier_elements[idx].inner_text()
+                            courier = courier.strip()
 
-                        yield {
-                            "type": "delivery",
-                            "data": {
-                                "recipient": delivery.recipient,
-                                "courier": delivery.courier,
-                                "tracking_number": delivery.tracking_number,
-                                "product_name": delivery.product_name
+                        # 같은 인덱스의 수령인 가져오기
+                        recipient = ""
+                        if idx < len(recipient_elements):
+                            recipient_text = await recipient_elements[idx].inner_text()
+                            # "배송지명이형석(이형석)" 형태에서 이름 추출
+                            recipient = recipient_text.replace("배송지명", "").strip()
+                            # 괄호 안의 이름 제거 (예: "이형석(이형석)" -> "이형석")
+                            import re
+                            recipient = re.sub(r'\([^)]*\)', '', recipient).strip()
+
+                        if tracking_number:
+                            scrape_logger.info(f"배송 정보 발견: {recipient} / {courier} / {tracking_number}")
+
+                            delivery = DeliveryItem(
+                                recipient=recipient,
+                                courier=courier,
+                                tracking_number=tracking_number,
+                                product_name=""
+                            )
+                            deliveries.append(delivery)
+
+                            yield {
+                                "type": "delivery",
+                                "data": {
+                                    "recipient": delivery.recipient,
+                                    "courier": delivery.courier,
+                                    "tracking_number": delivery.tracking_number,
+                                    "product_name": delivery.product_name
+                                }
                             }
-                        }
 
-                except Exception as e:
-                    logger.warning(f"항목 {idx} 파싱 오류: {e}")
-                    continue
+                    except Exception as e:
+                        scrape_logger.warning(f"항목 {idx} 파싱 오류: {e}")
+                        continue
+            else:
+                # 방법 2: 기존 방식 (item 기반)
+                scrape_logger.info("직접 셀렉터 실패, item 기반 파싱 시도")
+                for idx, item in enumerate(items):
+                    try:
+                        # 배송 상태 확인
+                        status_elem = await item.query_selector('[class*="status"], [class*="state"], .delivery_state')
+                        if status_elem:
+                            status_text = await status_elem.inner_text()
+                            if '배송중' not in status_text and '배송 중' not in status_text:
+                                continue
+
+                        # 상품명
+                        product_elem = await item.query_selector('[class*="product"], [class*="goods"], .goods_name')
+                        product_name = await product_elem.inner_text() if product_elem else ""
+
+                        # 수령인 - 새 셀렉터 먼저 시도
+                        recipient_elem = await item.query_selector('[class*="DeliveryContent_name"], [class*="receiver"], [class*="recipient"], .receiver_name')
+                        recipient = await recipient_elem.inner_text() if recipient_elem else ""
+
+                        # 택배사 및 송장번호 - 새 셀렉터 먼저 시도
+                        courier_elem = await item.query_selector('[class*="Courier_company"]')
+                        courier = await courier_elem.inner_text() if courier_elem else ""
+
+                        tracking_elem = await item.query_selector('[class*="Courier_number"]')
+                        tracking_number = await tracking_elem.inner_text() if tracking_elem else ""
+
+                        if not tracking_number:
+                            # 기존 방식
+                            tracking_elem = await item.query_selector('[class*="tracking"], [class*="invoice"], .delivery_info')
+                            if tracking_elem:
+                                tracking_text = await tracking_elem.inner_text()
+                                courier, tracking_number = self._parse_tracking_info(tracking_text)
+
+                        if tracking_number:
+                            delivery = DeliveryItem(
+                                recipient=recipient.strip(),
+                                courier=courier.strip(),
+                                tracking_number=tracking_number.strip(),
+                                product_name=product_name.strip()
+                            )
+                            deliveries.append(delivery)
+
+                            yield {
+                                "type": "delivery",
+                                "data": {
+                                    "recipient": delivery.recipient,
+                                    "courier": delivery.courier,
+                                    "tracking_number": delivery.tracking_number,
+                                    "product_name": delivery.product_name
+                                }
+                            }
+
+                    except Exception as e:
+                        scrape_logger.warning(f"항목 {idx} 파싱 오류: {e}")
+                        continue
 
             yield {
                 "type": "complete",
