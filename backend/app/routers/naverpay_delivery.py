@@ -12,7 +12,7 @@ import json
 
 from app.database import get_db
 from app.models.delivery import NaverPayDelivery, NaverPaySchedule
-from app.services.naverpay_scraper import get_scraper, reset_scraper
+from app.services.naverpay_scraper import get_scraper, reset_scraper, scrape_logger
 from app.services.delivery_tracker import (
     get_tracking_url,
     get_all_couriers,
@@ -616,3 +616,96 @@ async def export_to_csv(
     except Exception as e:
         logger.error(f"CSV 내보내기 오류: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== Debug Logs API ==========
+
+@router.get("/logs")
+async def get_scrape_logs(
+    limit: int = Query(50, ge=1, le=200, description="조회할 로그 개수")
+):
+    """스크래핑 상세 로그 조회"""
+    return {
+        "success": True,
+        "logs": scrape_logger.get_logs(limit),
+        "total_count": len(scrape_logger.logs)
+    }
+
+
+@router.delete("/logs")
+async def clear_scrape_logs():
+    """스크래핑 로그 초기화"""
+    scrape_logger.clear()
+    return {"success": True, "message": "로그 초기화 완료"}
+
+
+@router.get("/debug/page-info")
+async def get_page_debug_info():
+    """현재 브라우저 페이지 디버그 정보"""
+    try:
+        scraper = await get_scraper()
+
+        if not scraper.page:
+            return {
+                "success": False,
+                "error": "브라우저가 초기화되지 않았습니다",
+                "browser_initialized": False
+            }
+
+        # 현재 페이지 정보 수집
+        current_url = scraper.page.url
+        title = await scraper.page.title()
+
+        # 페이지 HTML 구조 분석
+        page_analysis = await scraper.page.evaluate('''
+            () => {
+                const result = {
+                    bodyClasses: document.body.className,
+                    hasOrderList: !!document.querySelector('.order_list'),
+                    hasDeliveryList: !!document.querySelector('.delivery_list'),
+                    orderRelatedElements: [],
+                    deliveryRelatedElements: []
+                };
+
+                // order 관련 요소 찾기
+                document.querySelectorAll('*[class*="order"], *[class*="Order"]').forEach((el, i) => {
+                    if (i < 10) {
+                        result.orderRelatedElements.push({
+                            tag: el.tagName,
+                            className: el.className,
+                            textPreview: el.innerText?.substring(0, 100) || ''
+                        });
+                    }
+                });
+
+                // delivery 관련 요소 찾기
+                document.querySelectorAll('*[class*="delivery"], *[class*="Delivery"]').forEach((el, i) => {
+                    if (i < 10) {
+                        result.deliveryRelatedElements.push({
+                            tag: el.tagName,
+                            className: el.className,
+                            textPreview: el.innerText?.substring(0, 100) || ''
+                        });
+                    }
+                });
+
+                return result;
+            }
+        ''')
+
+        return {
+            "success": True,
+            "browser_initialized": True,
+            "is_logged_in": scraper.is_logged_in,
+            "username": scraper.username,
+            "current_url": current_url,
+            "page_title": title,
+            "page_analysis": page_analysis
+        }
+
+    except Exception as e:
+        logger.error(f"페이지 디버그 정보 조회 오류: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }

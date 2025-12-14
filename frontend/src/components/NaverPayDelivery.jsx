@@ -25,7 +25,11 @@ import {
   PlayCircle,
   Plus,
   History,
-  Settings2
+  Settings2,
+  Bug,
+  AlertTriangle,
+  Info,
+  Terminal
 } from 'lucide-react'
 import '../styles/NaverPayDelivery.css'
 
@@ -53,10 +57,15 @@ const NaverPayDelivery = ({ apiBaseUrl, showNotification }) => {
   const [scrapeStats, setScrapeStats] = useState({ total: 0, new: 0 })
 
   // 탭 관리
-  const [activeTab, setActiveTab] = useState('deliveries') // 'deliveries' | 'schedules' | 'history'
+  const [activeTab, setActiveTab] = useState('deliveries') // 'deliveries' | 'schedules' | 'history' | 'logs'
 
   // 스케줄 관리
   const [schedules, setSchedules] = useState([])
+
+  // 디버그 로그
+  const [debugLogs, setDebugLogs] = useState([])
+  const [pageDebugInfo, setPageDebugInfo] = useState(null)
+  const [logsLoading, setLogsLoading] = useState(false)
   const [scheduleHistory, setScheduleHistory] = useState([])
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [newSchedule, setNewSchedule] = useState({
@@ -79,6 +88,8 @@ const NaverPayDelivery = ({ apiBaseUrl, showNotification }) => {
       loadSchedules()
     } else if (activeTab === 'history') {
       loadScheduleHistory()
+    } else if (activeTab === 'logs') {
+      loadDebugLogs()
     }
   }, [activeTab])
 
@@ -170,6 +181,42 @@ const NaverPayDelivery = ({ apiBaseUrl, showNotification }) => {
       setScheduleHistory(res.data)
     } catch (error) {
       console.error('실행 이력 로드 실패:', error)
+    }
+  }
+
+  // 디버그 로그 로드
+  const loadDebugLogs = async () => {
+    try {
+      setLogsLoading(true)
+      const res = await axios.get(`${apiBaseUrl}/naverpay/logs?limit=100`)
+      if (res.data.success) {
+        setDebugLogs(res.data.logs.reverse()) // 최신순 정렬
+      }
+    } catch (error) {
+      console.error('디버그 로그 로드 실패:', error)
+    } finally {
+      setLogsLoading(false)
+    }
+  }
+
+  // 페이지 디버그 정보 로드
+  const loadPageDebugInfo = async () => {
+    try {
+      const res = await axios.get(`${apiBaseUrl}/naverpay/debug/page-info`)
+      setPageDebugInfo(res.data)
+    } catch (error) {
+      console.error('페이지 디버그 정보 로드 실패:', error)
+    }
+  }
+
+  // 로그 초기화
+  const clearDebugLogs = async () => {
+    try {
+      await axios.delete(`${apiBaseUrl}/naverpay/logs`)
+      setDebugLogs([])
+      showNotification('로그가 초기화되었습니다', 'success')
+    } catch (error) {
+      showNotification('로그 초기화 실패', 'error')
     }
   }
 
@@ -431,6 +478,13 @@ const NaverPayDelivery = ({ apiBaseUrl, showNotification }) => {
         >
           <History size={18} />
           실행 이력
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
+          onClick={() => setActiveTab('logs')}
+        >
+          <Terminal size={18} />
+          디버그 로그
         </button>
       </div>
 
@@ -786,6 +840,143 @@ const NaverPayDelivery = ({ apiBaseUrl, showNotification }) => {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* 디버그 로그 탭 */}
+      {activeTab === 'logs' && (
+        <div className="logs-section">
+          <div className="section-header">
+            <h3><Terminal size={20} /> 스크래핑 디버그 로그</h3>
+            <div className="header-actions">
+              <button className="btn btn-secondary" onClick={loadPageDebugInfo}>
+                <Bug size={18} />
+                페이지 분석
+              </button>
+              <button className="btn btn-secondary" onClick={loadDebugLogs}>
+                <RefreshCw size={18} />
+                새로고침
+              </button>
+              <button className="btn btn-danger" onClick={clearDebugLogs}>
+                <Trash2 size={18} />
+                로그 초기화
+              </button>
+            </div>
+          </div>
+
+          {/* 페이지 디버그 정보 */}
+          {pageDebugInfo && (
+            <motion.div
+              className="debug-info-card"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <h4><Bug size={16} /> 현재 브라우저 상태</h4>
+              <div className="debug-info-grid">
+                <div className="debug-item">
+                  <span className="label">브라우저 초기화:</span>
+                  <span className={`value ${pageDebugInfo.browser_initialized ? 'success' : 'error'}`}>
+                    {pageDebugInfo.browser_initialized ? '완료' : '미완료'}
+                  </span>
+                </div>
+                <div className="debug-item">
+                  <span className="label">로그인 상태:</span>
+                  <span className={`value ${pageDebugInfo.is_logged_in ? 'success' : 'error'}`}>
+                    {pageDebugInfo.is_logged_in ? `로그인됨 (${pageDebugInfo.username})` : '로그인 안됨'}
+                  </span>
+                </div>
+                <div className="debug-item">
+                  <span className="label">현재 URL:</span>
+                  <span className="value url">{pageDebugInfo.current_url || '-'}</span>
+                </div>
+                <div className="debug-item">
+                  <span className="label">페이지 제목:</span>
+                  <span className="value">{pageDebugInfo.page_title || '-'}</span>
+                </div>
+              </div>
+              {pageDebugInfo.page_analysis && (
+                <div className="page-analysis">
+                  <h5>페이지 분석 결과</h5>
+                  <div className="analysis-items">
+                    <div className="analysis-item">
+                      <span>order_list 요소:</span>
+                      <span className={pageDebugInfo.page_analysis.hasOrderList ? 'found' : 'not-found'}>
+                        {pageDebugInfo.page_analysis.hasOrderList ? '발견됨' : '없음'}
+                      </span>
+                    </div>
+                    <div className="analysis-item">
+                      <span>delivery_list 요소:</span>
+                      <span className={pageDebugInfo.page_analysis.hasDeliveryList ? 'found' : 'not-found'}>
+                        {pageDebugInfo.page_analysis.hasDeliveryList ? '발견됨' : '없음'}
+                      </span>
+                    </div>
+                  </div>
+                  {pageDebugInfo.page_analysis.orderRelatedElements?.length > 0 && (
+                    <div className="elements-list">
+                      <h6>Order 관련 요소 ({pageDebugInfo.page_analysis.orderRelatedElements.length}개):</h6>
+                      {pageDebugInfo.page_analysis.orderRelatedElements.slice(0, 5).map((el, idx) => (
+                        <div key={idx} className="element-item">
+                          <code>{`<${el.tag.toLowerCase()} class="${el.className?.substring(0, 50)}...">`}</code>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {pageDebugInfo.error && (
+                <div className="debug-error">
+                  <AlertTriangle size={16} />
+                  <span>{pageDebugInfo.error}</span>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* 로그 목록 */}
+          <div className="logs-container">
+            {logsLoading ? (
+              <div className="loading-state">
+                <RefreshCw size={32} className="spin" />
+                <p>로그 로딩 중...</p>
+              </div>
+            ) : debugLogs.length === 0 ? (
+              <div className="empty-state">
+                <Terminal size={48} />
+                <h3>로그가 없습니다</h3>
+                <p>배송 정보 수집을 실행하면 로그가 여기에 표시됩니다</p>
+              </div>
+            ) : (
+              <div className="logs-list">
+                {debugLogs.map((log, idx) => (
+                  <motion.div
+                    key={idx}
+                    className={`log-entry ${log.level}`}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: idx * 0.02 }}
+                  >
+                    <div className="log-header">
+                      <span className="log-time">
+                        {new Date(log.timestamp).toLocaleTimeString('ko-KR')}
+                      </span>
+                      <span className={`log-level ${log.level}`}>
+                        {log.level === 'error' && <XCircle size={14} />}
+                        {log.level === 'warning' && <AlertTriangle size={14} />}
+                        {log.level === 'info' && <Info size={14} />}
+                        {log.level.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="log-message">{log.message}</div>
+                    {log.details && Object.keys(log.details).length > 0 && (
+                      <div className="log-details">
+                        <pre>{JSON.stringify(log.details, null, 2)}</pre>
+                      </div>
+                    )}
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

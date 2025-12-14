@@ -15,6 +15,55 @@ logger = logging.getLogger(__name__)
 
 # 쿠키 저장 경로 (서버 배포 시 /data 볼륨 사용)
 COOKIE_STORAGE_PATH = os.environ.get('COOKIE_STORAGE_PATH', '/data/naver_cookies.json')
+
+# 스크래핑 로그 저장
+class ScrapeLogger:
+    """스크래핑 로그 수집기"""
+
+    def __init__(self, max_logs: int = 100):
+        self.logs: List[Dict] = []
+        self.max_logs = max_logs
+
+    def add(self, level: str, message: str, details: Optional[Dict] = None):
+        """로그 추가"""
+        log_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "level": level,
+            "message": message,
+            "details": details or {}
+        }
+        self.logs.append(log_entry)
+        # 최대 개수 유지
+        if len(self.logs) > self.max_logs:
+            self.logs = self.logs[-self.max_logs:]
+        # 표준 로거에도 기록
+        if level == "error":
+            logger.error(message)
+        elif level == "warning":
+            logger.warning(message)
+        else:
+            logger.info(message)
+
+    def info(self, message: str, details: Optional[Dict] = None):
+        self.add("info", message, details)
+
+    def warning(self, message: str, details: Optional[Dict] = None):
+        self.add("warning", message, details)
+
+    def error(self, message: str, details: Optional[Dict] = None):
+        self.add("error", message, details)
+
+    def get_logs(self, limit: int = 50) -> List[Dict]:
+        """최근 로그 반환"""
+        return self.logs[-limit:]
+
+    def clear(self):
+        """로그 초기화"""
+        self.logs = []
+
+
+# 전역 로그 수집기
+scrape_logger = ScrapeLogger()
 # 로컬 개발 시 fallback
 if not os.path.exists(os.path.dirname(COOKIE_STORAGE_PATH)):
     COOKIE_STORAGE_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'naver_cookies.json')
@@ -259,21 +308,33 @@ class NaverPayScraper:
         Yields:
             배송 정보 또는 진행 상황 메시지
         """
+        scrape_logger.info("=== 배송 정보 수집 시작 ===")
+
         if not self.is_logged_in:
+            scrape_logger.error("로그인되지 않은 상태입니다")
             yield {"type": "error", "message": "로그인이 필요합니다"}
             return
 
+        scrape_logger.info(f"로그인 상태 확인: 사용자={self.username}")
+
         try:
             yield {"type": "status", "message": "네이버페이 주문내역 페이지로 이동 중..."}
+            scrape_logger.info("네이버페이 주문내역 페이지로 이동 시작")
 
             # 네이버페이 주문내역 페이지로 이동
             await self.page.goto(
                 'https://order.pay.naver.com/home?tabMenu=DELIVERY',
                 wait_until='networkidle'
             )
+            current_url = self.page.url
+            scrape_logger.info(f"페이지 이동 완료: {current_url}")
             await asyncio.sleep(2)
 
             yield {"type": "status", "message": "배송중인 상품 검색 중..."}
+
+            # 페이지 HTML 구조 확인 (디버깅용)
+            page_title = await self.page.title()
+            scrape_logger.info(f"페이지 타이틀: {page_title}")
 
             # 배송중 상태의 상품 찾기
             deliveries = []
@@ -281,16 +342,62 @@ class NaverPayScraper:
             # 주문 목록 로드 대기
             try:
                 await self.page.wait_for_selector('.order_list, .delivery_list, [class*="order"]', timeout=10000)
-            except:
+                scrape_logger.info("주문 목록 셀렉터 발견됨")
+            except Exception as e:
+                scrape_logger.warning(f"주문 목록 셀렉터 타임아웃: {e}")
+                # 페이지 HTML 일부 저장 (디버깅)
+                try:
+                    body_html = await self.page.evaluate('document.body.innerHTML.substring(0, 2000)')
+                    scrape_logger.warning("페이지 HTML 구조 확인 필요", {"html_preview": body_html[:500]})
+                except:
+                    pass
                 yield {"type": "status", "message": "주문 목록을 찾을 수 없습니다"}
 
             # 페이지 스크롤하여 모든 항목 로드
-            for _ in range(5):
+            scrape_logger.info("페이지 스크롤 시작 (5회)")
+            for i in range(5):
                 await self.page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
                 await asyncio.sleep(1)
+            scrape_logger.info("페이지 스크롤 완료")
 
-            # 배송 정보 추출
-            items = await self.page.query_selector_all('[class*="delivery"], [class*="order-item"], .order_goods')
+            # 배송 정보 추출 - 여러 셀렉터 시도
+            selectors = [
+                '[class*="delivery"]',
+                '[class*="order-item"]',
+                '.order_goods',
+                '[class*="OrderItem"]',
+                '[class*="item"]',
+                'li[class*="Order"]'
+            ]
+
+            items = []
+            for selector in selectors:
+                items = await self.page.query_selector_all(selector)
+                if items:
+                    scrape_logger.info(f"셀렉터 '{selector}'로 {len(items)}개 항목 발견")
+                    break
+
+            if not items:
+                scrape_logger.warning("어떤 셀렉터로도 항목을 찾지 못함")
+                # 전체 클래스 목록 확인
+                try:
+                    all_classes = await self.page.evaluate('''
+                        () => {
+                            const elements = document.querySelectorAll('*[class]');
+                            const classes = new Set();
+                            elements.forEach(el => {
+                                el.classList.forEach(c => classes.add(c));
+                            });
+                            return Array.from(classes).filter(c =>
+                                c.includes('order') || c.includes('Order') ||
+                                c.includes('delivery') || c.includes('Delivery') ||
+                                c.includes('item') || c.includes('Item')
+                            ).slice(0, 30);
+                        }
+                    ''')
+                    scrape_logger.info(f"관련 클래스 목록: {all_classes}")
+                except Exception as e:
+                    scrape_logger.error(f"클래스 목록 추출 실패: {e}")
 
             yield {"type": "status", "message": f"총 {len(items)}개 항목 발견, 분석 중..."}
 
