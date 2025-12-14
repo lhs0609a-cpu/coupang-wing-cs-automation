@@ -57,3 +57,12 @@ dist/
 # Build
 frontend/dist/
 backend/build/
+
+# PyInstaller build outputs
+CoupangWingCS_Deployment_*/
+*.exe
+*.dll
+*.spec
+
+# Claude settings
+.claude/

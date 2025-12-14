@@ -6,8 +6,11 @@ import asyncio
 import logging
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional, AsyncGenerator
+
+# 한국 시간대 (UTC+9)
+KST = timezone(timedelta(hours=9))
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,7 +30,7 @@ class ScrapeLogger:
     def add(self, level: str, message: str, details: Optional[Dict] = None):
         """로그 추가"""
         log_entry = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(KST).isoformat(),
             "level": level,
             "message": message,
             "details": details or {}
@@ -138,7 +141,7 @@ class NaverPayScraper:
                     json.dump({
                         'cookies': cookies,
                         'username': self.username,
-                        'saved_at': datetime.now().isoformat()
+                        'saved_at': datetime.now(KST).isoformat()
                     }, f, ensure_ascii=False, indent=2)
                 logger.info(f"쿠키 저장 완료: {len(cookies)}개")
         except Exception as e:
@@ -181,7 +184,7 @@ class NaverPayScraper:
 
             # 로그인 상태 확인 완료
             self.is_logged_in = True
-            self.last_login_check = datetime.now()
+            self.last_login_check = datetime.now(KST)
             return True
 
         except Exception as e:
@@ -281,7 +284,7 @@ class NaverPayScraper:
 
             self.is_logged_in = True
             self.username = username
-            self.last_login_check = datetime.now()
+            self.last_login_check = datetime.now(KST)
             logger.info(f"네이버 로그인 성공: {username}")
 
             # 로그인 성공 시 쿠키 저장
@@ -305,11 +308,13 @@ class NaverPayScraper:
         """
         배송중인 상품 정보 스크래핑 (스트리밍)
         - 배송중/배송준비중 페이지로 이동
-        - 각 상품을 클릭하여 상세 페이지에서 정보 추출
+        - 각 상품을 클릭하여 상세 페이지에서 수령인 확인
+        - 배송조회 버튼 클릭하여 택배사/송장번호 추출
 
         Yields:
             배송 정보 또는 진행 상황 메시지
         """
+        import re
         scrape_logger.info("=== 배송 정보 수집 시작 ===")
 
         if not self.is_logged_in:
@@ -342,67 +347,110 @@ class NaverPayScraper:
 
             yield {"type": "status", "message": "상품 목록 검색 중..."}
 
-            # 페이지 스크롤하여 모든 항목 로드
+            # 페이지 스크롤하여 모든 항목 로드 (무한 스크롤 대응)
             scrape_logger.info("페이지 스크롤 시작")
-            for i in range(3):
+            last_height = 0
+            scroll_count = 0
+            max_scrolls = 20  # 최대 스크롤 횟수
+
+            while scroll_count < max_scrolls:
                 await self.page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
-                await asyncio.sleep(1)
+                await asyncio.sleep(1.5)
+                new_height = await self.page.evaluate('document.body.scrollHeight')
+                if new_height == last_height:
+                    break
+                last_height = new_height
+                scroll_count += 1
+                scrape_logger.info(f"스크롤 {scroll_count}회 완료")
+
             scrape_logger.info("페이지 스크롤 완료")
 
-            # 상품 항목 찾기 - PaymentItem 또는 ProductName 클릭 가능한 요소
-            # 상품명 링크를 찾아서 클릭
-            product_links = await self.page.query_selector_all('[class*="ProductName_name"], [class*="ProductName_article"] a')
-            scrape_logger.info(f"상품 링크 {len(product_links)}개 발견")
+            # 상품 항목 찾기 - ProductName_article 클래스를 가진 div가 각 상품
+            product_items = await self.page.query_selector_all('[class*="ProductName_article"]')
+            scrape_logger.info(f"상품 항목 {len(product_items)}개 발견")
 
-            if not product_links:
-                # 다른 셀렉터 시도
-                product_links = await self.page.query_selector_all('[class*="product"] a, [class*="Product"] a')
-                scrape_logger.info(f"대체 셀렉터로 {len(product_links)}개 발견")
+            if not product_items:
+                # 대체 셀렉터 시도
+                product_items = await self.page.query_selector_all('[class*="ProductName_name"]')
+                scrape_logger.info(f"대체 셀렉터로 {len(product_items)}개 발견")
 
-            yield {"type": "status", "message": f"{len(product_links)}개 상품 발견, 상세 정보 수집 중..."}
+            total_products = len(product_items)
+            yield {"type": "status", "message": f"{total_products}개 상품 발견, 상세 정보 수집 중..."}
 
-            # 각 상품 클릭하여 상세 정보 추출
-            processed_tracking_numbers = set()  # 중복 방지
+            # 중복 방지
+            processed_tracking_numbers = set()
 
-            for idx, link in enumerate(product_links):
+            for idx in range(total_products):
                 try:
-                    scrape_logger.info(f"상품 {idx + 1}/{len(product_links)} 처리 중...")
+                    scrape_logger.info(f"상품 {idx + 1}/{total_products} 처리 중...")
+                    yield {"type": "status", "message": f"상품 {idx + 1}/{total_products} 처리 중..."}
 
-                    # 상품명 가져오기
-                    product_name = await link.inner_text()
-                    product_name = product_name.strip()
-                    scrape_logger.info(f"상품명: {product_name[:30]}...")
+                    # 매번 상품 목록을 새로 조회 (DOM이 변경될 수 있음)
+                    product_items = await self.page.query_selector_all('[class*="ProductName_article"]')
+                    if idx >= len(product_items):
+                        scrape_logger.warning(f"상품 인덱스 {idx} 초과, 건너뜀")
+                        continue
+
+                    product_item = product_items[idx]
+
+                    # 상품명 추출
+                    product_name = ""
+                    name_elem = await product_item.query_selector('[class*="ProductName_name"], [class*="ProductNameHighlightByKeyword"]')
+                    if name_elem:
+                        product_name = await name_elem.inner_text()
+                        product_name = product_name.strip()
+                    scrape_logger.info(f"상품명: {product_name[:50] if product_name else '(알수없음)'}...")
 
                     # 상품 클릭하여 상세 페이지로 이동
-                    await link.click()
-                    await asyncio.sleep(2)  # 페이지 로드 대기
+                    await product_item.click()
+                    await asyncio.sleep(2)
+                    scrape_logger.info(f"상세 페이지 이동 완료: {self.page.url[:60]}...")
 
-                    # 상세 페이지에서 택배사/송장번호/수령인 추출
-                    courier = ""
-                    tracking_number = ""
+                    # 수령인 추출 - DeliveryContent_name 클래스
                     recipient = ""
-
-                    # 택배사
-                    courier_elem = await self.page.query_selector('[class*="Courier_company"]')
-                    if courier_elem:
-                        courier = await courier_elem.inner_text()
-                        courier = courier.strip()
-
-                    # 송장번호
-                    tracking_elem = await self.page.query_selector('[class*="Courier_number"]')
-                    if tracking_elem:
-                        tracking_number = await tracking_elem.inner_text()
-                        tracking_number = tracking_number.strip()
-
-                    # 수령인
                     recipient_elem = await self.page.query_selector('[class*="DeliveryContent_name"]')
                     if recipient_elem:
                         recipient_text = await recipient_elem.inner_text()
+                        # "배송지명" 텍스트 제거하고 괄호 안 내용 제거
                         recipient = recipient_text.replace("배송지명", "").strip()
-                        import re
+                        # 괄호와 그 내용 제거 (예: "박수정(박수정)" -> "박수정")
                         recipient = re.sub(r'\([^)]*\)', '', recipient).strip()
+                    scrape_logger.info(f"수령인: {recipient}")
 
-                    scrape_logger.info(f"추출 결과: 택배사={courier}, 송장={tracking_number}, 수령인={recipient}")
+                    # 배송조회 버튼 찾기 및 클릭
+                    courier = ""
+                    tracking_number = ""
+
+                    delivery_btn = await self.page.query_selector('button:has-text("배송조회"), [class*="AssignmentButtonGroup"] button:has-text("배송조회")')
+                    if not delivery_btn:
+                        # 대체 셀렉터
+                        delivery_btn = await self.page.query_selector('[class*="AssignmentButtonGroup_text"]:has-text("배송조회")')
+                        if delivery_btn:
+                            delivery_btn = await delivery_btn.evaluate_handle('el => el.closest("button")')
+
+                    if delivery_btn:
+                        scrape_logger.info("배송조회 버튼 발견, 클릭 중...")
+                        await delivery_btn.click()
+                        await asyncio.sleep(2)
+                        scrape_logger.info(f"배송조회 페이지 이동: {self.page.url[:60]}...")
+
+                        # 택배사 추출 - Courier_company 클래스
+                        courier_elem = await self.page.query_selector('[class*="Courier_company"]')
+                        if courier_elem:
+                            courier = await courier_elem.inner_text()
+                            courier = courier.strip()
+                        scrape_logger.info(f"택배사: {courier}")
+
+                        # 송장번호 추출 - Courier_number 클래스
+                        tracking_elem = await self.page.query_selector('[class*="Courier_number"]')
+                        if tracking_elem:
+                            tracking_number = await tracking_elem.inner_text()
+                            tracking_number = tracking_number.strip()
+                        scrape_logger.info(f"송장번호: {tracking_number}")
+                    else:
+                        scrape_logger.warning("배송조회 버튼을 찾을 수 없음")
+
+                    scrape_logger.info(f"추출 결과: 수령인={recipient}, 택배사={courier}, 송장={tracking_number}")
 
                     # 중복 체크 후 저장
                     if tracking_number and tracking_number not in processed_tracking_numbers:
@@ -412,7 +460,7 @@ class NaverPayScraper:
                             recipient=recipient,
                             courier=courier,
                             tracking_number=tracking_number,
-                            product_name=product_name[:100]  # 상품명 100자 제한
+                            product_name=product_name[:100] if product_name else ""
                         )
                         deliveries.append(delivery)
 
@@ -425,10 +473,17 @@ class NaverPayScraper:
                                 "product_name": delivery.product_name
                             }
                         }
+                    elif tracking_number:
+                        scrape_logger.info(f"중복 송장번호, 건너뜀: {tracking_number}")
 
                     # 목록 페이지로 돌아가기
-                    await self.page.go_back()
+                    await self.page.goto(delivery_url, wait_until='domcontentloaded', timeout=15000)
                     await asyncio.sleep(2)
+
+                    # 스크롤하여 다음 상품 로드
+                    for _ in range(min(idx // 3 + 1, 5)):
+                        await self.page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+                        await asyncio.sleep(0.5)
 
                 except Exception as e:
                     scrape_logger.warning(f"상품 {idx + 1} 처리 오류: {e}")

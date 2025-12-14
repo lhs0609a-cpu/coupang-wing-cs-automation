@@ -190,7 +190,7 @@ const NaverPayDelivery = ({ apiBaseUrl, showNotification }) => {
       setLogsLoading(true)
       const res = await axios.get(`${apiBaseUrl}/naverpay/logs?limit=100`)
       if (res.data.success) {
-        setDebugLogs(res.data.logs.reverse()) // 최신순 정렬
+        setDebugLogs(res.data.logs) // 시간순 정렬 (오래된 것부터)
       }
     } catch (error) {
       console.error('디버그 로그 로드 실패:', error)
