@@ -70,11 +70,45 @@ const ProductSearch = ({ showNotification }) => {
       values.push(current.trim().replace(/"/g, ''))
 
       if (values.length >= 3) {
+        // 이미지 URL 찾기 (상품명 다음 컬럼들 중 이미지 URL로 보이는 것)
+        let imageUrl = ''
+        for (let k = 2; k < values.length; k++) {
+          const val = values[k] || ''
+          // 이미지 URL 패턴 확인 (jpg, png, gif, webp 등)
+          if (val.match(/\.(jpg|jpeg|png|gif|webp)/i) ||
+              val.includes('image') ||
+              val.includes('img') ||
+              val.includes('thumbnail') ||
+              val.includes('cdn')) {
+            imageUrl = val
+            break
+          }
+        }
+
+        // URL 찾기 (쿠팡, 11번가, 네이버 등 쇼핑몰 URL)
+        let productUrl = ''
+        for (let k = 2; k < values.length; k++) {
+          const val = values[k] || ''
+          if (val.includes('coupang.com') ||
+              val.includes('11st.co.kr') ||
+              val.includes('naver.com') ||
+              val.includes('gmarket') ||
+              val.includes('auction') ||
+              val.startsWith('http')) {
+            // 이미지 URL이 아닌 경우에만
+            if (!val.match(/\.(jpg|jpeg|png|gif|webp)/i)) {
+              productUrl = val
+              break
+            }
+          }
+        }
+
         data.push({
           id: values[0] || '',
           name: values[1] || '',
-          url: values[2] || '',
-          date: values[3] || ''
+          image: imageUrl,
+          url: productUrl || values[2] || '',
+          date: values[values.length - 1] || values[3] || ''
         })
       }
     }
@@ -331,9 +365,25 @@ const ProductSearch = ({ showNotification }) => {
               exit={{ opacity: 0, y: -20 }}
               transition={{ delay: index * 0.05 }}
             >
+              {/* 상품 대표 이미지 */}
+              <div className="product-thumbnail">
+                {product.image ? (
+                  <img
+                    src={product.image}
+                    alt={product.name}
+                    onError={(e) => {
+                      e.target.style.display = 'none'
+                      e.target.nextSibling.style.display = 'flex'
+                    }}
+                  />
+                ) : null}
+                <div className="product-thumbnail-placeholder" style={{ display: product.image ? 'none' : 'flex' }}>
+                  <Package size={32} />
+                </div>
+              </div>
+
               <div className="product-info">
                 <div className="product-name">
-                  <Package size={18} />
                   <span>{product.name || '상품명 없음'}</span>
                 </div>
                 <div className="product-id">
