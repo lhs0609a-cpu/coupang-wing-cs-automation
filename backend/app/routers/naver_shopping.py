@@ -152,6 +152,14 @@ class ProductNameResponse(BaseModel):
     error: Optional[str] = None
 
 
+class ProductImageResponse(BaseModel):
+    """상품 이미지 추출 응답"""
+    success: bool
+    image_url: Optional[str] = None
+    source: str
+    error: Optional[str] = None
+
+
 @router.get("/extract-product-name", response_model=ProductNameResponse)
 async def extract_product_name(
     url: str = Query(..., description="상품 페이지 URL")
@@ -341,6 +349,151 @@ async def extract_product_name(
     except Exception as e:
         logger.error(f"Error extracting product name from {url}: {e}")
         return ProductNameResponse(
+            success=False,
+            source="unknown",
+            error=str(e)
+        )
+
+
+@router.get("/extract-product-image", response_model=ProductImageResponse)
+async def extract_product_image(
+    url: str = Query(..., description="상품 페이지 URL")
+):
+    """
+    상품 페이지 URL에서 대표 이미지 URL을 추출합니다.
+
+    지원 사이트:
+    - 11번가
+    - 쿠팡
+    - 네이버 스마트스토어
+    - G마켓
+    - 옥션
+    - 기타 (og:image 메타태그 사용)
+    """
+    try:
+        parsed_url = urlparse(url)
+        domain = parsed_url.netloc.lower()
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+        }
+
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            response = await client.get(url, headers=headers, timeout=15.0)
+
+            if response.status_code != 200:
+                return ProductImageResponse(
+                    success=False,
+                    source=domain,
+                    error=f"페이지 로드 실패 (상태 코드: {response.status_code})"
+                )
+
+            html = response.text
+            soup = BeautifulSoup(html, 'html.parser')
+            image_url = None
+            source = "unknown"
+
+            # 네이버 스마트스토어
+            if "smartstore.naver.com" in domain or "shopping.naver.com" in domain or "brand.naver.com" in domain:
+                source = "네이버스마트스토어"
+                # 대표이미지 찾기
+                img = soup.find("img", alt="대표이미지")
+                if img and img.get("src"):
+                    image_url = img["src"]
+                # og:image 메타태그
+                if not image_url:
+                    meta = soup.find("meta", property="og:image")
+                    if meta and meta.get("content"):
+                        image_url = meta["content"]
+                # 다른 이미지 선택자
+                if not image_url:
+                    img = soup.select_one("._3X6PiBgKq9 img, .bd_2DO68 img, ._1LY7DqCnwR img")
+                    if img and img.get("src"):
+                        image_url = img["src"]
+
+            # 11번가
+            elif "11st.co.kr" in domain:
+                source = "11번가"
+                meta = soup.find("meta", property="og:image")
+                if meta and meta.get("content"):
+                    image_url = meta["content"]
+                if not image_url:
+                    img = soup.select_one(".img_full img, #prdImg, .c_product_img img")
+                    if img and img.get("src"):
+                        image_url = img["src"]
+
+            # 쿠팡
+            elif "coupang.com" in domain:
+                source = "쿠팡"
+                meta = soup.find("meta", property="og:image")
+                if meta and meta.get("content"):
+                    image_url = meta["content"]
+                if not image_url:
+                    img = soup.select_one(".prod-image__detail img, .prod-image img")
+                    if img and img.get("src"):
+                        image_url = img["src"]
+
+            # G마켓
+            elif "gmarket.co.kr" in domain:
+                source = "G마켓"
+                meta = soup.find("meta", property="og:image")
+                if meta and meta.get("content"):
+                    image_url = meta["content"]
+
+            # 옥션
+            elif "auction.co.kr" in domain:
+                source = "옥션"
+                meta = soup.find("meta", property="og:image")
+                if meta and meta.get("content"):
+                    image_url = meta["content"]
+
+            # 기타 사이트 - og:image 메타태그 사용
+            else:
+                source = domain
+                meta = soup.find("meta", property="og:image")
+                if meta and meta.get("content"):
+                    image_url = meta["content"]
+                # 첫 번째 큰 이미지 찾기
+                if not image_url:
+                    for img in soup.find_all("img"):
+                        src = img.get("src") or img.get("data-src")
+                        if src and ("product" in src.lower() or "item" in src.lower() or "goods" in src.lower()):
+                            image_url = src
+                            break
+
+            if image_url:
+                # 상대 경로를 절대 경로로 변환
+                if image_url.startswith("//"):
+                    image_url = "https:" + image_url
+                elif image_url.startswith("/"):
+                    image_url = f"https://{domain}{image_url}"
+
+                logger.info(f"Extracted product image from {source}: {image_url[:80]}...")
+
+                return ProductImageResponse(
+                    success=True,
+                    image_url=image_url,
+                    source=source
+                )
+            else:
+                return ProductImageResponse(
+                    success=False,
+                    source=source,
+                    error="이미지를 찾을 수 없습니다"
+                )
+
+    except httpx.TimeoutException:
+        logger.error(f"Timeout fetching URL: {url}")
+        return ProductImageResponse(
+            success=False,
+            source="unknown",
+            error="페이지 로드 시간 초과"
+        )
+    except Exception as e:
+        logger.error(f"Error extracting product image from {url}: {e}")
+        return ProductImageResponse(
             success=False,
             source="unknown",
             error=str(e)

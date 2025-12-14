@@ -39,6 +39,10 @@ const ProductSearch = ({ showNotification }) => {
   const [extractSource, setExtractSource] = useState(null)
   const [sortOrder, setSortOrder] = useState('asc') // 가격 낮은순
 
+  // 상품 이미지 캐시
+  const [productImages, setProductImages] = useState({})
+  const [imageLoadingIds, setImageLoadingIds] = useState(new Set())
+
   const apiBaseUrl = getApiBaseUrl()
 
   // CSV 파싱 함수
@@ -213,6 +217,59 @@ const ProductSearch = ({ showNotification }) => {
     return num.toLocaleString('ko-KR') + '원'
   }
 
+  // 상품 이미지 추출
+  const fetchProductImage = async (product) => {
+    if (!product.url || productImages[product.id] || imageLoadingIds.has(product.id)) {
+      return
+    }
+
+    setImageLoadingIds(prev => new Set([...prev, product.id]))
+
+    try {
+      const response = await axios.get(`${apiBaseUrl}/naver-shopping/extract-product-image`, {
+        params: { url: product.url },
+        timeout: 10000
+      })
+
+      if (response.data.success && response.data.image_url) {
+        setProductImages(prev => ({
+          ...prev,
+          [product.id]: response.data.image_url
+        }))
+        // 로컬스토리지에 캐시
+        const cached = JSON.parse(localStorage.getItem('productImageCache') || '{}')
+        cached[product.id] = response.data.image_url
+        localStorage.setItem('productImageCache', JSON.stringify(cached))
+      }
+    } catch (err) {
+      console.error('Image fetch error:', err)
+    } finally {
+      setImageLoadingIds(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(product.id)
+        return newSet
+      })
+    }
+  }
+
+  // 필터링된 상품의 이미지 로드
+  useEffect(() => {
+    // 캐시된 이미지 로드
+    const cached = JSON.parse(localStorage.getItem('productImageCache') || '{}')
+    if (Object.keys(cached).length > 0) {
+      setProductImages(prev => ({ ...prev, ...cached }))
+    }
+  }, [])
+
+  // 검색 결과 변경 시 이미지 로드
+  useEffect(() => {
+    filteredProducts.forEach(product => {
+      if (!productImages[product.id] && !imageLoadingIds.has(product.id)) {
+        fetchProductImage(product)
+      }
+    })
+  }, [filteredProducts])
+
   // 네이버 쇼핑 가격 비교 검색
   const searchPriceCompare = async (product, useExtractedName = null) => {
     setPriceCompareLoading(product.id)
@@ -366,20 +423,27 @@ const ProductSearch = ({ showNotification }) => {
               transition={{ delay: index * 0.05 }}
             >
               {/* 상품 대표 이미지 */}
-              <div className="product-thumbnail">
-                {product.image ? (
+              <div className="product-thumbnail-large">
+                {productImages[product.id] ? (
                   <img
-                    src={product.image}
+                    src={productImages[product.id]}
                     alt={product.name}
                     onError={(e) => {
                       e.target.style.display = 'none'
-                      e.target.nextSibling.style.display = 'flex'
+                      e.target.parentElement.querySelector('.product-thumbnail-placeholder').style.display = 'flex'
                     }}
                   />
                 ) : null}
-                <div className="product-thumbnail-placeholder" style={{ display: product.image ? 'none' : 'flex' }}>
-                  <Package size={32} />
-                </div>
+                {imageLoadingIds.has(product.id) ? (
+                  <div className="product-thumbnail-loading">
+                    <Loader2 size={28} className="spin" />
+                  </div>
+                ) : (
+                  <div className="product-thumbnail-placeholder" style={{ display: productImages[product.id] ? 'none' : 'flex' }}>
+                    <Package size={36} />
+                    <span>이미지 로딩중</span>
+                  </div>
+                )}
               </div>
 
               <div className="product-info">
