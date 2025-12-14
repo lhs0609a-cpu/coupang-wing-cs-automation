@@ -95,12 +95,17 @@ async def search_shopping(
 
             data = response.json()
 
-            # HTML 태그 제거 (title에서 <b> 태그 등 제거)
+            # HTML 태그 제거 및 상품명 정제
             items = []
             for item in data.get("items", []):
                 # title에서 HTML 태그 제거
                 title = item.get("title", "")
                 title = title.replace("<b>", "").replace("</b>", "")
+
+                # 상점명 접두사 제거 (예: [쿠오카], (센텀시티점), [쿠오카 공식] 등)
+                title = re.sub(r'^(\[[^\]]*\]|\([^)]*\))+\s*', '', title)
+                # 앞에 남아있는 불필요한 기호 제거
+                title = re.sub(r'^[\s\-_:]+', '', title).strip()
 
                 items.append(ShoppingItem(
                     title=title,
@@ -320,8 +325,17 @@ async def extract_product_name(
             if product_name:
                 # 불필요한 문자열 제거
                 product_name = product_name.strip()
+
                 # 사이트명 접미사 제거 (예: " - 11번가", " | 쿠팡")
                 product_name = re.sub(r'\s*[-|:]\s*(11번가|쿠팡|G마켓|옥션|인터파크|위메프|티몬|SSG|롯데ON|네이버쇼핑).*$', '', product_name, flags=re.IGNORECASE)
+
+                # 상점명 접두사 제거 (예: [쿠오카], (센텀시티점), [쿠오카 공식] 등)
+                # 패턴: 대괄호나 소괄호로 둘러싸인 상점명/지점명이 앞에 연속으로 나오는 경우
+                product_name = re.sub(r'^(\[[^\]]*\]|\([^)]*\))+\s*', '', product_name)
+
+                # 앞에 남아있는 불필요한 기호 제거
+                product_name = re.sub(r'^[\s\-_:]+', '', product_name)
+
                 # 특수문자 정리
                 product_name = re.sub(r'\s+', ' ', product_name).strip()
 
