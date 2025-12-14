@@ -321,14 +321,24 @@ class NaverPayScraper:
             yield {"type": "status", "message": "네이버페이 주문내역 페이지로 이동 중..."}
             scrape_logger.info("네이버페이 주문내역 페이지로 이동 시작")
 
-            # 네이버페이 주문내역 페이지로 이동
-            await self.page.goto(
-                'https://order.pay.naver.com/home?tabMenu=DELIVERY',
-                wait_until='networkidle'
-            )
+            # 네이버페이 주문내역 페이지로 이동 (타임아웃 설정)
+            try:
+                await self.page.goto(
+                    'https://order.pay.naver.com/home?tabMenu=DELIVERY',
+                    wait_until='domcontentloaded',  # networkidle 대신 domcontentloaded 사용
+                    timeout=30000  # 30초 타임아웃
+                )
+                scrape_logger.info("1차 페이지 로드 완료 (domcontentloaded)")
+            except Exception as nav_error:
+                scrape_logger.warning(f"1차 네비게이션 타임아웃: {nav_error}")
+                # 현재 페이지에서 계속 진행
+
             current_url = self.page.url
-            scrape_logger.info(f"페이지 이동 완료: {current_url}")
-            await asyncio.sleep(2)
+            scrape_logger.info(f"현재 URL: {current_url}")
+
+            # 추가 대기 (동적 콘텐츠 로드)
+            await asyncio.sleep(3)
+            scrape_logger.info("추가 대기 완료 (3초)")
 
             yield {"type": "status", "message": "배송중인 상품 검색 중..."}
 
