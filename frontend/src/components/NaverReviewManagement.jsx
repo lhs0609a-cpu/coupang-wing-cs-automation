@@ -18,7 +18,12 @@ import {
   MessageSquare,
   TrendingUp,
   Award,
-  Clock
+  Clock,
+  LogIn,
+  LogOut,
+  User,
+  Sparkles,
+  RotateCcw
 } from 'lucide-react'
 import '../styles/NaverReviewManagement.css'
 
@@ -37,6 +42,28 @@ const NaverReviewManagement = ({ apiBaseUrl, showNotification }) => {
   const [logs, setLogs] = useState([])
   const [stats, setStats] = useState(null)
   const [todayStats, setTodayStats] = useState(null)
+
+  // Login state
+  const [loginStatus, setLoginStatus] = useState({
+    is_logged_in: false,
+    username: null
+  })
+  const [loginLoading, setLoginLoading] = useState(false)
+  const [showLoginForm, setShowLoginForm] = useState(false)
+  const [loginForm, setLoginForm] = useState({
+    username: '',
+    password: ''
+  })
+
+  // Auto-generate state
+  const [showAutoGenerateForm, setShowAutoGenerateForm] = useState(false)
+  const [autoGenerateForm, setAutoGenerateForm] = useState({
+    count: 5,
+    category: 'general',
+    min_rating: 4,
+    max_rating: 5
+  })
+  const [categories, setCategories] = useState([])
 
   // Form state
   const [showTemplateForm, setShowTemplateForm] = useState(false)
@@ -98,12 +125,33 @@ const NaverReviewManagement = ({ apiBaseUrl, showNotification }) => {
         loadNaverAccounts(),
         loadStats(),
         loadTodayStats(),
-        loadRealtimeLogs()
+        loadRealtimeLogs(),
+        loadLoginStatus(),
+        loadCategories()
       ])
     } catch (error) {
       console.error('Failed to load data:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadLoginStatus = async () => {
+    try {
+      const response = await axios.get(`${apiBaseUrl}/naver-review/login-status`)
+      setLoginStatus(response.data)
+    } catch (error) {
+      console.error('Failed to load login status:', error)
+      setLoginStatus({ is_logged_in: false, username: null })
+    }
+  }
+
+  const loadCategories = async () => {
+    try {
+      const response = await axios.get(`${apiBaseUrl}/naver-review/templates/categories`)
+      setCategories(response.data.categories || [])
+    } catch (error) {
+      console.error('Failed to load categories:', error)
     }
   }
 
@@ -325,6 +373,96 @@ const NaverReviewManagement = ({ apiBaseUrl, showNotification }) => {
     }
   }
 
+  // 이미지 순환 배분
+  const applyImageRotation = async () => {
+    if (images.length === 0) {
+      showNotification?.('업로드된 이미지가 없습니다', 'error')
+      return
+    }
+
+    try {
+      const response = await axios.post(`${apiBaseUrl}/naver-review/images/apply-rotation`, {
+        images_per_template: 1
+      })
+
+      showNotification?.(response.data.message, 'success')
+      loadTemplates()
+    } catch (error) {
+      console.error('Failed to apply image rotation:', error)
+      showNotification?.('이미지 순환 배분 실패', 'error')
+    }
+  }
+
+  // 네이버 로그인
+  const handleLogin = async (e) => {
+    e.preventDefault()
+    if (!loginForm.username || !loginForm.password) {
+      showNotification?.('아이디와 비밀번호를 입력해주세요', 'error')
+      return
+    }
+
+    setLoginLoading(true)
+    try {
+      const response = await axios.post(`${apiBaseUrl}/naver-review/login`, {
+        username: loginForm.username,
+        password: loginForm.password
+      })
+
+      if (response.data.success) {
+        showNotification?.('로그인 성공!', 'success')
+        setLoginStatus({
+          is_logged_in: true,
+          username: loginForm.username
+        })
+        setShowLoginForm(false)
+        setLoginForm({ username: '', password: '' })
+      } else {
+        showNotification?.(response.data.message || '로그인 실패', 'error')
+      }
+    } catch (error) {
+      console.error('Login failed:', error)
+      showNotification?.(error.response?.data?.detail || '로그인 실패', 'error')
+    } finally {
+      setLoginLoading(false)
+    }
+  }
+
+  // 네이버 로그아웃
+  const handleLogout = async () => {
+    try {
+      await axios.post(`${apiBaseUrl}/naver-review/logout`)
+      showNotification?.('로그아웃 완료', 'success')
+      setLoginStatus({ is_logged_in: false, username: null })
+    } catch (error) {
+      console.error('Logout failed:', error)
+      showNotification?.('로그아웃 실패', 'error')
+    }
+  }
+
+  // 템플릿 자동 생성
+  const handleAutoGenerate = async (e) => {
+    e.preventDefault()
+    try {
+      const response = await axios.post(`${apiBaseUrl}/naver-review/templates/auto-generate`, {
+        count: autoGenerateForm.count,
+        category: autoGenerateForm.category,
+        min_rating: autoGenerateForm.min_rating,
+        max_rating: autoGenerateForm.max_rating
+      })
+
+      if (response.data.success) {
+        showNotification?.(response.data.message, 'success')
+        loadTemplates()
+        setShowAutoGenerateForm(false)
+      } else {
+        showNotification?.(response.data.message, 'warning')
+      }
+    } catch (error) {
+      console.error('Auto-generate failed:', error)
+      showNotification?.('템플릿 자동 생성 실패', 'error')
+    }
+  }
+
   const clearLogs = async () => {
     try {
       await axios.delete(`${apiBaseUrl}/naver-review/logs/realtime`)
@@ -378,6 +516,39 @@ const NaverReviewManagement = ({ apiBaseUrl, showNotification }) => {
               <span>자동화 시작</span>
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Login Section */}
+      <div className="login-section">
+        <div className="login-status-card">
+          <div className="login-info">
+            <User size={20} />
+            {loginStatus.is_logged_in ? (
+              <span className="logged-in">
+                <CheckCircle size={16} className="status-icon success" />
+                {loginStatus.username} 로그인됨
+              </span>
+            ) : (
+              <span className="logged-out">
+                <AlertCircle size={16} className="status-icon warning" />
+                로그인 필요
+              </span>
+            )}
+          </div>
+          <div className="login-actions">
+            {loginStatus.is_logged_in ? (
+              <button className="btn-secondary-small" onClick={handleLogout}>
+                <LogOut size={16} />
+                <span>로그아웃</span>
+              </button>
+            ) : (
+              <button className="btn-primary-small" onClick={() => setShowLoginForm(true)}>
+                <LogIn size={16} />
+                <span>로그인</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -463,10 +634,16 @@ const NaverReviewManagement = ({ apiBaseUrl, showNotification }) => {
         <div className="section templates-section">
           <div className="section-header">
             <h2>리뷰 템플릿</h2>
-            <button className="btn-primary-small" onClick={() => setShowTemplateForm(true)}>
-              <Plus size={16} />
-              <span>템플릿 추가</span>
-            </button>
+            <div className="section-actions">
+              <button className="btn-secondary-small" onClick={() => setShowAutoGenerateForm(true)}>
+                <Sparkles size={16} />
+                <span>자동 생성</span>
+              </button>
+              <button className="btn-primary-small" onClick={() => setShowTemplateForm(true)}>
+                <Plus size={16} />
+                <span>템플릿 추가</span>
+              </button>
+            </div>
           </div>
 
           <div className="templates-list">
@@ -514,8 +691,18 @@ const NaverReviewManagement = ({ apiBaseUrl, showNotification }) => {
             <div className="section-actions">
               <button
                 className="btn-secondary-small"
+                onClick={applyImageRotation}
+                disabled={images.length === 0}
+                title="이미지를 템플릿에 순환 배분"
+              >
+                <RotateCcw size={16} />
+                <span>순환 배분</span>
+              </button>
+              <button
+                className="btn-secondary-small"
                 onClick={applyRandomImages}
                 disabled={images.length === 0}
+                title="이미지를 템플릿에 랜덤 배분"
               >
                 <Shuffle size={16} />
                 <span>랜덤 배분</span>
@@ -647,6 +834,177 @@ const NaverReviewManagement = ({ apiBaseUrl, showNotification }) => {
                   <button type="submit" className="btn-primary">
                     <CheckCircle size={18} />
                     <span>{editingTemplate ? '수정' : '추가'}</span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Login Modal */}
+      <AnimatePresence>
+        {showLoginForm && (
+          <motion.div
+            className="modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowLoginForm(false)}
+          >
+            <motion.div
+              className="modal-content"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="modal-header">
+                <h2>네이버 로그인</h2>
+                <button className="btn-icon" onClick={() => setShowLoginForm(false)}>
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleLogin} className="login-form">
+                <div className="form-group">
+                  <label>네이버 아이디</label>
+                  <input
+                    type="text"
+                    value={loginForm.username}
+                    onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })}
+                    placeholder="네이버 아이디를 입력하세요"
+                    required
+                    autoComplete="username"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>비밀번호</label>
+                  <input
+                    type="password"
+                    value={loginForm.password}
+                    onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+                    placeholder="비밀번호를 입력하세요"
+                    required
+                    autoComplete="current-password"
+                  />
+                </div>
+
+                <div className="form-actions">
+                  <button type="button" className="btn-secondary" onClick={() => setShowLoginForm(false)}>
+                    취소
+                  </button>
+                  <button type="submit" className="btn-primary" disabled={loginLoading}>
+                    {loginLoading ? (
+                      <>
+                        <RefreshCw size={18} className="spinning" />
+                        <span>로그인 중...</span>
+                      </>
+                    ) : (
+                      <>
+                        <LogIn size={18} />
+                        <span>로그인</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Auto Generate Modal */}
+      <AnimatePresence>
+        {showAutoGenerateForm && (
+          <motion.div
+            className="modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowAutoGenerateForm(false)}
+          >
+            <motion.div
+              className="modal-content"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="modal-header">
+                <h2>리뷰 템플릿 자동 생성</h2>
+                <button className="btn-icon" onClick={() => setShowAutoGenerateForm(false)}>
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleAutoGenerate} className="auto-generate-form">
+                <div className="form-group">
+                  <label>생성 개수</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={autoGenerateForm.count}
+                    onChange={(e) => setAutoGenerateForm({ ...autoGenerateForm, count: parseInt(e.target.value) || 5 })}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>카테고리</label>
+                  <select
+                    value={autoGenerateForm.category}
+                    onChange={(e) => setAutoGenerateForm({ ...autoGenerateForm, category: e.target.value })}
+                  >
+                    {categories.length > 0 ? (
+                      categories.map(cat => (
+                        <option key={cat.value} value={cat.value}>{cat.label}</option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="general">일반</option>
+                        <option value="food">식품</option>
+                        <option value="fashion">패션</option>
+                        <option value="electronics">전자기기</option>
+                        <option value="beauty">뷰티</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>최소 별점</label>
+                    <select
+                      value={autoGenerateForm.min_rating}
+                      onChange={(e) => setAutoGenerateForm({ ...autoGenerateForm, min_rating: parseInt(e.target.value) })}
+                    >
+                      {[1, 2, 3, 4, 5].map(r => (
+                        <option key={r} value={r}>{r}점</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>최대 별점</label>
+                    <select
+                      value={autoGenerateForm.max_rating}
+                      onChange={(e) => setAutoGenerateForm({ ...autoGenerateForm, max_rating: parseInt(e.target.value) })}
+                    >
+                      {[1, 2, 3, 4, 5].map(r => (
+                        <option key={r} value={r}>{r}점</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-actions">
+                  <button type="button" className="btn-secondary" onClick={() => setShowAutoGenerateForm(false)}>
+                    취소
+                  </button>
+                  <button type="submit" className="btn-primary">
+                    <Sparkles size={18} />
+                    <span>자동 생성</span>
                   </button>
                 </div>
               </form>

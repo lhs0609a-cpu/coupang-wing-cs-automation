@@ -579,3 +579,269 @@ def get_today_stats(
         "total_points": total_points,
         "success_rate": round(total_success / total_reviews * 100, 1) if total_reviews > 0 else 0
     }
+
+
+# === 네이버 로그인 API ===
+
+class NaverLoginRequest(BaseModel):
+    """네이버 로그인 요청"""
+    username: str
+    password: str
+
+
+# 네이버 로그인용 스크래퍼 인스턴스
+_naver_scraper = None
+
+
+async def get_naver_review_scraper():
+    """네이버 리뷰용 스크래퍼 인스턴스 반환"""
+    global _naver_scraper
+    if _naver_scraper is None:
+        from ..services.naverpay_scraper import NaverPayScraper
+        _naver_scraper = NaverPayScraper()
+    return _naver_scraper
+
+
+async def reset_naver_review_scraper():
+    """스크래퍼 인스턴스 리셋"""
+    global _naver_scraper
+    if _naver_scraper:
+        await _naver_scraper.close()
+        _naver_scraper = None
+
+
+@router.post("/login")
+async def naver_login(request: NaverLoginRequest):
+    """네이버 로그인"""
+    try:
+        scraper = await get_naver_review_scraper()
+        result = await scraper.login(request.username, request.password)
+        return result
+    except Exception as e:
+        logger.error(f"네이버 로그인 오류: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/logout")
+async def naver_logout():
+    """네이버 로그아웃"""
+    try:
+        await reset_naver_review_scraper()
+        return {"success": True, "message": "로그아웃 완료"}
+    except Exception as e:
+        logger.error(f"로그아웃 오류: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/login-status")
+async def get_naver_login_status():
+    """네이버 로그인 상태 확인"""
+    try:
+        scraper = await get_naver_review_scraper()
+        return await scraper.get_login_status()
+    except Exception as e:
+        return {"is_logged_in": False, "username": None}
+
+
+# === 템플릿 자동 생성 API ===
+
+class AutoGenerateTemplatesRequest(BaseModel):
+    """템플릿 자동 생성 요청"""
+    count: int = 5  # 생성할 템플릿 수
+    min_rating: int = 4  # 최소 별점
+    max_rating: int = 5  # 최대 별점
+    category: Optional[str] = None  # 카테고리 (선택)
+
+
+# 리뷰 템플릿 예시 데이터
+REVIEW_TEMPLATES = {
+    "general": [
+        "배송이 빠르고 제품 품질도 좋아요! 만족합니다 👍",
+        "가격 대비 품질이 정말 좋습니다. 재구매 의사 있어요!",
+        "생각보다 훨씬 좋네요. 추천합니다!",
+        "포장도 꼼꼼하고 제품 상태도 완벽해요.",
+        "빠른 배송 감사합니다! 제품도 매우 만족스러워요.",
+        "사진과 동일한 제품이에요. 품질 좋습니다!",
+        "가성비 최고! 이 가격에 이 정도면 대만족이에요.",
+        "친절한 배송에 제품까지 완벽합니다. 감사해요!",
+        "기대 이상이에요! 다음에도 여기서 구매할게요.",
+        "배송도 빠르고 포장도 깔끔해서 좋았어요!",
+        "제품 퀄리티가 정말 좋네요. 강력 추천합니다!",
+        "다른 곳보다 저렴하고 품질도 좋아서 만족해요.",
+        "주문하고 바로 다음날 도착했어요! 감사합니다.",
+        "생각보다 더 괜찮아서 기분 좋게 사용 중이에요.",
+        "이 가격에 이 품질이면 완전 득템이에요!",
+        "포장 상태도 좋고 제품에 하자 없이 잘 왔어요.",
+        "색상도 예쁘고 퀄리티도 좋아요. 만족합니다!",
+        "선물용으로 구매했는데 받는 분이 좋아하시네요.",
+        "여러 번 구매했는데 항상 만족스러워요!",
+        "다른 분들 후기 보고 구매했는데 역시 좋네요!",
+    ],
+    "food": [
+        "맛있어요! 또 주문할게요 😋",
+        "신선하고 맛도 좋아요. 배송도 빠르네요!",
+        "가격 대비 양도 많고 맛도 좋습니다.",
+        "생각보다 훨씬 맛있어요. 재구매 확정!",
+        "포장도 꼼꼼하고 맛도 훌륭해요!",
+    ],
+    "fashion": [
+        "사이즈 딱 맞고 핏이 예뻐요! 추천합니다.",
+        "색상이 사진과 똑같아요. 품질도 좋습니다!",
+        "편하고 예뻐서 매일 입고 있어요 💕",
+        "가격 대비 퀄리티 좋아요. 재구매 의사 있습니다!",
+        "봄에 입기 딱 좋은 옷이에요. 만족!",
+    ],
+    "electronics": [
+        "성능 좋고 가격도 합리적이에요!",
+        "설명대로 잘 작동해요. 만족합니다!",
+        "가성비 최고의 제품이에요. 추천!",
+        "빠른 배송에 제품도 완벽해요!",
+        "사용하기 편하고 품질도 좋습니다.",
+    ],
+    "beauty": [
+        "피부에 잘 맞아요! 순하고 좋습니다 ✨",
+        "발림성이 좋고 향도 좋아요!",
+        "지인 추천으로 구매했는데 역시 좋네요!",
+        "민감한 피부인데 트러블 없이 잘 써요.",
+        "가격 대비 용량도 많고 효과도 좋아요!",
+    ]
+}
+
+
+@router.post("/templates/auto-generate")
+def auto_generate_templates(
+    request: AutoGenerateTemplatesRequest,
+    db: Session = Depends(get_db)
+):
+    """리뷰 템플릿 자동 생성"""
+    try:
+        category = request.category or "general"
+        templates_pool = REVIEW_TEMPLATES.get(category, REVIEW_TEMPLATES["general"])
+
+        # 이미 존재하는 템플릿 텍스트 조회
+        existing_texts = set(
+            t.review_text for t in db.query(NaverReviewTemplate).all()
+        )
+
+        # 사용 가능한 템플릿 필터링
+        available_templates = [t for t in templates_pool if t not in existing_texts]
+
+        if not available_templates:
+            # 모든 템플릿이 이미 존재하면 general 풀에서 추가
+            available_templates = [t for t in REVIEW_TEMPLATES["general"] if t not in existing_texts]
+
+        # 생성할 개수 결정
+        count = min(request.count, len(available_templates))
+
+        if count == 0:
+            return {
+                "success": False,
+                "message": "더 이상 생성할 수 있는 템플릿이 없습니다.",
+                "created_count": 0
+            }
+
+        # 랜덤 선택
+        selected_templates = random.sample(available_templates, count)
+
+        created_templates = []
+        for text in selected_templates:
+            star_rating = random.randint(request.min_rating, request.max_rating)
+
+            new_template = NaverReviewTemplate(
+                star_rating=star_rating,
+                review_text=text,
+                image_paths=None
+            )
+            db.add(new_template)
+            created_templates.append({
+                "star_rating": star_rating,
+                "review_text": text
+            })
+
+        db.commit()
+
+        logger.info(f"Auto-generated {len(created_templates)} review templates")
+
+        return {
+            "success": True,
+            "message": f"{len(created_templates)}개의 템플릿이 생성되었습니다.",
+            "created_count": len(created_templates),
+            "templates": created_templates
+        }
+
+    except Exception as e:
+        logger.error(f"템플릿 자동 생성 오류: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/templates/categories")
+def get_template_categories():
+    """사용 가능한 템플릿 카테고리 목록"""
+    return {
+        "categories": [
+            {"value": "general", "label": "일반"},
+            {"value": "food", "label": "식품"},
+            {"value": "fashion", "label": "패션"},
+            {"value": "electronics", "label": "전자기기"},
+            {"value": "beauty", "label": "뷰티"}
+        ]
+    }
+
+
+# === 이미지 순환 배분 API ===
+
+class ImageRotationRequest(BaseModel):
+    """이미지 순환 배분 요청"""
+    images_per_template: int = 1  # 템플릿당 이미지 수
+
+
+@router.post("/images/apply-rotation")
+def apply_image_rotation(
+    request: ImageRotationRequest,
+    db: Session = Depends(get_db)
+):
+    """모든 템플릿에 이미지 순환 배분 (번갈아가며 배분)"""
+    # 활성 이미지 조회
+    images = db.query(NaverReviewImage).filter(
+        NaverReviewImage.is_active == True
+    ).all()
+
+    if not images:
+        raise HTTPException(status_code=400, detail="업로드된 이미지가 없습니다.")
+
+    # 활성 템플릿 조회
+    templates = db.query(NaverReviewTemplate).filter(
+        NaverReviewTemplate.is_active == True
+    ).all()
+
+    if not templates:
+        raise HTTPException(status_code=400, detail="활성화된 템플릿이 없습니다.")
+
+    image_filenames = [img.filename for img in images]
+    num_images = len(image_filenames)
+    images_per_template = min(request.images_per_template, num_images)
+
+    updated_count = 0
+
+    for idx, template in enumerate(templates):
+        # 순환 인덱스 계산 - 템플릿마다 다른 이미지 세트 할당
+        start_idx = (idx * images_per_template) % num_images
+
+        selected_images = []
+        for i in range(images_per_template):
+            img_idx = (start_idx + i) % num_images
+            selected_images.append(image_filenames[img_idx])
+
+        template.image_paths = ";".join(selected_images)
+        updated_count += 1
+
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"{updated_count}개 템플릿에 이미지 순환 배분 완료",
+        "templates_updated": updated_count,
+        "images_available": num_images,
+        "images_per_template": images_per_template
+    }
