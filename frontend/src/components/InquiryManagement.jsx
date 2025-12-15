@@ -21,18 +21,25 @@ import {
   Bot,
   ChevronDown,
   ChevronUp,
-  Eye
+  Eye,
+  History,
+  Calendar
 } from 'lucide-react'
 import AutomationLogs from './AutomationLogs'
 import '../styles/InquiryManagement.css'
 
 const InquiryManagement = ({ responses = [], onApprove, onReject, loading, apiBaseUrl, showNotification }) => {
-  const [activeSubTab, setActiveSubTab] = useState('responses') // 'responses', 'logs', 'settings'
+  const [activeSubTab, setActiveSubTab] = useState('responses') // 'responses', 'history', 'logs', 'settings'
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [editingId, setEditingId] = useState(null)
   const [editedText, setEditedText] = useState('')
   const [expandedIds, setExpandedIds] = useState(new Set())
+
+  // History state (all responses including completed)
+  const [allResponses, setAllResponses] = useState([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyFilter, setHistoryFilter] = useState('all')
 
   // GPT Settings state
   const [gptSettings, setGptSettings] = useState({
@@ -59,6 +66,59 @@ const InquiryManagement = ({ responses = [], onApprove, onReject, loading, apiBa
       loadResponseStyles()
     }
   }, [apiBaseUrl])
+
+  // Load history when tab changes
+  useEffect(() => {
+    if (activeSubTab === 'history' && apiBaseUrl) {
+      loadAllResponses()
+    }
+  }, [activeSubTab, apiBaseUrl])
+
+  const loadAllResponses = async () => {
+    setHistoryLoading(true)
+    try {
+      // Try to get all responses from API with status filter
+      const statusParam = historyFilter !== 'all' ? `&status_filter=${historyFilter}` : ''
+      const response = await axios.get(`${apiBaseUrl}/responses/all?limit=100${statusParam}`)
+      setAllResponses(response.data || [])
+    } catch (error) {
+      console.error('Failed to load response history:', error)
+      // Fallback to using the provided responses
+      setAllResponses(responses || [])
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  // Reload history when filter changes
+  useEffect(() => {
+    if (activeSubTab === 'history' && apiBaseUrl) {
+      loadAllResponses()
+    }
+  }, [historyFilter])
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '-'
+    const date = new Date(dateStr)
+    return date.toLocaleString('ko-KR', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  const getStatusLabel = (status) => {
+    const labels = {
+      'pending_approval': '승인 대기',
+      'approved': '승인됨',
+      'rejected': '거부됨',
+      'submitted': '제출 완료',
+      'draft': '초안'
+    }
+    return labels[status] || status
+  }
 
   const loadGptSettings = async () => {
     try {
@@ -159,6 +219,147 @@ const InquiryManagement = ({ responses = [], onApprove, onReject, loading, apiBa
     return badges[level] || badges.medium
   }
 
+  const renderHistory = () => (
+    <div className="history-panel">
+      <div className="history-header">
+        <h2>
+          <History size={24} />
+          답변 기록
+        </h2>
+        <div className="history-actions">
+          <select
+            value={historyFilter}
+            onChange={(e) => setHistoryFilter(e.target.value)}
+            className="history-filter-select"
+          >
+            <option value="all">전체 상태</option>
+            <option value="approved">승인됨</option>
+            <option value="submitted">제출 완료</option>
+            <option value="rejected">거부됨</option>
+            <option value="pending_approval">승인 대기</option>
+          </select>
+          <button type="button" className="btn-secondary" onClick={loadAllResponses} disabled={historyLoading}>
+            <RefreshCw size={16} className={historyLoading ? 'spinning' : ''} />
+            <span>새로고침</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="history-stats">
+        <div className="stat-item">
+          <span className="stat-value">{allResponses.length}</span>
+          <span className="stat-label">총 답변 수</span>
+        </div>
+        <div className="stat-item">
+          <span className="stat-value">{allResponses.filter(r => r.status === 'submitted').length}</span>
+          <span className="stat-label">제출 완료</span>
+        </div>
+        <div className="stat-item">
+          <span className="stat-value">{allResponses.filter(r => r.status === 'approved').length}</span>
+          <span className="stat-label">승인됨</span>
+        </div>
+        <div className="stat-item">
+          <span className="stat-value">{allResponses.filter(r => r.status === 'rejected').length}</span>
+          <span className="stat-label">거부됨</span>
+        </div>
+      </div>
+
+      {historyLoading ? (
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+          <p>불러오는 중...</p>
+        </div>
+      ) : allResponses.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-icon">📭</div>
+          <h3>답변 기록이 없습니다</h3>
+          <p>아직 생성된 답변이 없습니다</p>
+        </div>
+      ) : (
+        <div className="history-list">
+          {allResponses.map((response, index) => (
+            <motion.div
+              key={response.id}
+              className={`history-card status-${response.status}`}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.03 }}
+            >
+              <div className="history-card-header">
+                <div className="history-badges">
+                  <span className={`status-badge status-${response.status}`}>
+                    {getStatusLabel(response.status)}
+                  </span>
+                  {response.confidence_score && (
+                    <span className="confidence-badge">
+                      🎯 {response.confidence_score.toFixed(1)}%
+                    </span>
+                  )}
+                </div>
+                <div className="history-meta">
+                  <span className="history-id">#{response.inquiry_id}</span>
+                  <span className="history-date">
+                    <Calendar size={14} />
+                    {formatDate(response.created_at)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="history-content">
+                {/* Inquiry Section */}
+                <div className="history-inquiry">
+                  <div className="history-section-title">
+                    <MessageSquare size={16} />
+                    <span>고객 문의</span>
+                    {response.customer_name && (
+                      <span className="customer-name">({response.customer_name})</span>
+                    )}
+                  </div>
+                  <p className="history-text inquiry-text">
+                    {response.inquiry_text || '문의 내용 없음'}
+                  </p>
+                  {response.product_name && (
+                    <p className="product-info">
+                      📦 {response.product_name}
+                      {response.order_number && ` | 주문번호: ${response.order_number}`}
+                    </p>
+                  )}
+                </div>
+
+                {/* Response Section */}
+                <div className="history-response">
+                  <div className="history-section-title">
+                    <Bot size={16} />
+                    <span>AI 답변</span>
+                    {response.approved_by && (
+                      <span className="approved-by">승인: {response.approved_by}</span>
+                    )}
+                  </div>
+                  <p className="history-text response-text">
+                    {response.response_text}
+                  </p>
+                </div>
+              </div>
+
+              <div className="history-footer">
+                {response.submitted_at && (
+                  <span className="submitted-time">
+                    ✅ 제출: {formatDate(response.submitted_at)}
+                  </span>
+                )}
+                {response.approved_at && !response.submitted_at && (
+                  <span className="approved-time">
+                    ✓ 승인: {formatDate(response.approved_at)}
+                  </span>
+                )}
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+
   const renderGptSettings = () => (
     <div className="gpt-settings-panel">
       <div className="settings-header">
@@ -167,11 +368,11 @@ const InquiryManagement = ({ responses = [], onApprove, onReject, loading, apiBa
           GPT 응답 설정
         </h2>
         <div className="settings-actions">
-          <button className="btn-secondary" onClick={resetGptSettings} disabled={settingsLoading}>
+          <button type="button" className="btn-secondary" onClick={resetGptSettings} disabled={settingsLoading}>
             <RefreshCw size={16} />
             <span>초기화</span>
           </button>
-          <button className="btn-primary" onClick={saveGptSettings} disabled={settingsLoading}>
+          <button type="button" className="btn-primary" onClick={saveGptSettings} disabled={settingsLoading}>
             {settingsLoading ? <RefreshCw size={16} className="spinning" /> : <Save size={16} />}
             <span>저장</span>
           </button>
@@ -348,6 +549,13 @@ const InquiryManagement = ({ responses = [], onApprove, onReject, loading, apiBa
         >
           <List size={18} />
           <span>답변 검토</span>
+        </button>
+        <button
+          className={`sub-tab ${activeSubTab === 'history' ? 'active' : ''}`}
+          onClick={() => setActiveSubTab('history')}
+        >
+          <History size={18} />
+          <span>답변 기록</span>
         </button>
         <button
           className={`sub-tab ${activeSubTab === 'logs' ? 'active' : ''}`}
@@ -575,11 +783,13 @@ const InquiryManagement = ({ responses = [], onApprove, onReject, loading, apiBa
             </div>
           )}
         </>
+      ) : activeSubTab === 'history' ? (
+        renderHistory()
       ) : activeSubTab === 'logs' ? (
         <AutomationLogs apiBaseUrl={apiBaseUrl} />
-      ) : (
+      ) : activeSubTab === 'settings' ? (
         renderGptSettings()
-      )}
+      ) : null}
     </div>
   )
 }

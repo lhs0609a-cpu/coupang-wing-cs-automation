@@ -117,7 +117,20 @@ app = FastAPI(
 )
 
 
-# Configure CORS - MUST BE FIRST!
+# Add custom middlewares (order matters - last added = first executed)
+# Rate limiting first (innermost)
+app.add_middleware(
+    RateLimitMiddleware,
+    requests_per_minute=60,
+    requests_per_hour=1000,
+    requests_per_day=10000
+)
+
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestIDMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
+
+# Configure CORS - MUST BE LAST (so it executes FIRST)
 # Allow all origins for production deployment (Vercel frontend)
 app.add_middleware(
     CORSMiddleware,
@@ -127,19 +140,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
     max_age=3600,  # Cache preflight for 1 hour
-)
-
-# Add custom middlewares
-app.add_middleware(RequestLoggingMiddleware)
-app.add_middleware(RequestIDMiddleware)
-app.add_middleware(SecurityHeadersMiddleware)
-
-# Add rate limiting (configure limits)
-app.add_middleware(
-    RateLimitMiddleware,
-    requests_per_minute=60,
-    requests_per_hour=1000,
-    requests_per_day=10000
 )
 
 # Register error handlers

@@ -211,3 +211,69 @@ def get_submission_stats(db: Session = Depends(get_db)):
     submitter = ResponseSubmitter(db)
     stats = submitter.get_submission_stats()
     return stats
+
+
+class ResponseWithInquirySchema(BaseModel):
+    """Response with inquiry details"""
+    id: int
+    inquiry_id: int
+    response_text: str
+    confidence_score: Optional[float]
+    risk_level: Optional[str]
+    status: str
+    validation_passed: bool
+    approved_by: Optional[str]
+    approved_at: Optional[datetime]
+    submitted_at: Optional[datetime]
+    created_at: Optional[datetime]
+    inquiry_text: Optional[str] = None
+    customer_name: Optional[str] = None
+    product_name: Optional[str] = None
+    order_number: Optional[str] = None
+    inquiry_type: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/all", response_model=List[ResponseWithInquirySchema])
+def get_all_responses(
+    limit: int = 100,
+    offset: int = 0,
+    status_filter: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Get all responses with inquiry details for history view"""
+    query = db.query(Response).join(Inquiry, Response.inquiry_id == Inquiry.id, isouter=True)
+
+    # Apply status filter if provided
+    if status_filter and status_filter != 'all':
+        query = query.filter(Response.status == status_filter)
+
+    # Order by most recent first
+    responses = query.order_by(Response.created_at.desc()).offset(offset).limit(limit).all()
+
+    # Build response with inquiry details
+    result = []
+    for response in responses:
+        inquiry = response.inquiry
+        result.append({
+            "id": response.id,
+            "inquiry_id": response.inquiry_id,
+            "response_text": response.response_text,
+            "confidence_score": response.confidence_score,
+            "risk_level": response.risk_level,
+            "status": response.status,
+            "validation_passed": response.validation_passed,
+            "approved_by": response.approved_by,
+            "approved_at": response.approved_at,
+            "submitted_at": response.submitted_at,
+            "created_at": response.created_at,
+            "inquiry_text": inquiry.inquiry_text if inquiry else None,
+            "customer_name": inquiry.customer_name if inquiry else None,
+            "product_name": inquiry.product_name if inquiry else None,
+            "order_number": inquiry.order_number if inquiry else None,
+            "inquiry_type": inquiry.inquiry_type if inquiry else None,
+        })
+
+    return result
