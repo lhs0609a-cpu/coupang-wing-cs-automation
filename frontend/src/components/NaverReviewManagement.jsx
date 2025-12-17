@@ -23,11 +23,26 @@ import {
   LogOut,
   User,
   Sparkles,
-  RotateCcw
+  RotateCcw,
+  Monitor,
+  Cloud,
+  Wifi,
+  WifiOff
 } from 'lucide-react'
 import '../styles/NaverReviewManagement.css'
 
-const NaverReviewManagement = ({ apiBaseUrl, showNotification }) => {
+const NaverReviewManagement = ({ apiBaseUrl: cloudApiBaseUrl, showNotification }) => {
+  // 로컬 백엔드 설정 (브라우저 자동화용)
+  const LOCAL_BACKEND_URL = 'http://localhost:8000/api'
+  const [useLocalBackend, setUseLocalBackend] = useState(() => {
+    return localStorage.getItem('naver_review_use_local') === 'true'
+  })
+  const [localBackendConnected, setLocalBackendConnected] = useState(false)
+  const [checkingLocalBackend, setCheckingLocalBackend] = useState(false)
+
+  // 실제 사용할 API URL
+  const apiBaseUrl = useLocalBackend ? LOCAL_BACKEND_URL : cloudApiBaseUrl
+
   // State
   const [loading, setLoading] = useState(false)
   const [botStatus, setBotStatus] = useState({
@@ -82,6 +97,52 @@ const NaverReviewManagement = ({ apiBaseUrl, showNotification }) => {
   const statusIntervalRef = useRef(null)
   const dropZoneRef = useRef(null)
   const [isDragging, setIsDragging] = useState(false)
+
+  // 로컬 백엔드 연결 체크
+  const checkLocalBackend = async () => {
+    setCheckingLocalBackend(true)
+    try {
+      const response = await axios.get(`${LOCAL_BACKEND_URL.replace('/api', '')}/health`, {
+        timeout: 3000
+      })
+      if (response.data && response.data.status) {
+        setLocalBackendConnected(true)
+        showNotification?.('로컬 백엔드 연결 성공!', 'success')
+        return true
+      }
+    } catch (error) {
+      setLocalBackendConnected(false)
+      console.log('로컬 백엔드 연결 실패:', error.message)
+    } finally {
+      setCheckingLocalBackend(false)
+    }
+    return false
+  }
+
+  // 로컬 백엔드 토글
+  const toggleLocalBackend = async (enabled) => {
+    if (enabled) {
+      const connected = await checkLocalBackend()
+      if (!connected) {
+        showNotification?.('로컬 백엔드에 연결할 수 없습니다. 먼저 로컬 서버를 실행해주세요.', 'error')
+        return
+      }
+    }
+    setUseLocalBackend(enabled)
+    localStorage.setItem('naver_review_use_local', enabled.toString())
+    if (enabled) {
+      showNotification?.('로컬 모드로 전환되었습니다. 브라우저 창이 표시됩니다.', 'success')
+    } else {
+      showNotification?.('클라우드 모드로 전환되었습니다.', 'info')
+    }
+  }
+
+  // 로컬 백엔드 상태 체크 (마운트 시)
+  useEffect(() => {
+    if (useLocalBackend) {
+      checkLocalBackend()
+    }
+  }, [])
 
   // Load data on mount
   useEffect(() => {
@@ -248,6 +309,17 @@ const NaverReviewManagement = ({ apiBaseUrl, showNotification }) => {
 
   // Automation controls
   const startAutomation = async () => {
+    // 로컬 모드 체크
+    if (!useLocalBackend) {
+      showNotification?.('브라우저 자동화를 실행하려면 로컬 모드를 활성화해주세요', 'error')
+      return
+    }
+
+    if (!localBackendConnected) {
+      showNotification?.('로컬 백엔드에 연결되어 있지 않습니다. 서버를 실행해주세요.', 'error')
+      return
+    }
+
     if (!selectedAccountId) {
       showNotification?.('네이버 계정을 선택해주세요', 'error')
       return
@@ -259,15 +331,18 @@ const NaverReviewManagement = ({ apiBaseUrl, showNotification }) => {
     }
 
     try {
+      // 로컬에서는 headless: false로 브라우저 창 표시
       const response = await axios.post(`${apiBaseUrl}/naver-review/start`, {
         naver_account_id: parseInt(selectedAccountId),
         login_method: loginMethod,
-        headless: false
+        headless: false  // 브라우저 창 표시
       })
 
       if (response.data.success) {
-        showNotification?.('자동화가 시작되었습니다', 'success')
+        showNotification?.('자동화가 시작되었습니다. 브라우저 창을 확인하세요!', 'success')
         setBotStatus(prev => ({ ...prev, is_running: true }))
+        // 로그 폴링 시작
+        loadLogs()
       }
     } catch (error) {
       console.error('Failed to start automation:', error)
@@ -664,6 +739,70 @@ const NaverReviewManagement = ({ apiBaseUrl, showNotification }) => {
             </span>
           </div>
         </div>
+      </div>
+
+      {/* 실행 모드 설정 */}
+      <div className="mode-toggle-section">
+        <div className="mode-toggle-card">
+          <div className="mode-info">
+            {useLocalBackend ? (
+              <>
+                <Monitor size={24} className="mode-icon local" />
+                <div className="mode-details">
+                  <span className="mode-title">로컬 모드</span>
+                  <span className="mode-desc">브라우저 창이 열리며 실행됩니다</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <Cloud size={24} className="mode-icon cloud" />
+                <div className="mode-details">
+                  <span className="mode-title">클라우드 모드</span>
+                  <span className="mode-desc">서버에서 실행 (브라우저 자동화 불가)</span>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="mode-status">
+            {useLocalBackend && (
+              <span className={`connection-status ${localBackendConnected ? 'connected' : 'disconnected'}`}>
+                {checkingLocalBackend ? (
+                  <><RefreshCw size={14} className="spinning" /> 연결 확인 중...</>
+                ) : localBackendConnected ? (
+                  <><Wifi size={14} /> 연결됨</>
+                ) : (
+                  <><WifiOff size={14} /> 연결 안됨</>
+                )}
+              </span>
+            )}
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={useLocalBackend}
+                onChange={(e) => toggleLocalBackend(e.target.checked)}
+                disabled={botStatus.is_running || checkingLocalBackend}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+        {!useLocalBackend && (
+          <div className="mode-warning">
+            <AlertCircle size={16} />
+            <span>브라우저 자동화를 사용하려면 <strong>로컬 모드</strong>를 활성화하세요.
+              로컬 서버 실행: <code>cd backend && python -m uvicorn app.main:app --reload</code>
+            </span>
+          </div>
+        )}
+        {useLocalBackend && !localBackendConnected && (
+          <div className="mode-warning error">
+            <AlertCircle size={16} />
+            <span>로컬 백엔드에 연결할 수 없습니다. 서버가 실행 중인지 확인하세요.</span>
+            <button className="btn-retry" onClick={checkLocalBackend} disabled={checkingLocalBackend}>
+              <RefreshCw size={14} /> 재연결
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Settings Row */}
