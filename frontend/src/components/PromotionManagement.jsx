@@ -949,7 +949,7 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
             <option value="">계정 선택</option>
             {accounts.map(account => (
               <option key={account.id} value={account.id}>
-                {account.store_name || account.vendor_id}
+                {account.name} ({account.vendor_id})
               </option>
             ))}
           </select>

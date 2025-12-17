@@ -80,6 +80,8 @@ const NaverReviewManagement = ({ apiBaseUrl, showNotification }) => {
 
   const logContainerRef = useRef(null)
   const statusIntervalRef = useRef(null)
+  const dropZoneRef = useRef(null)
+  const [isDragging, setIsDragging] = useState(false)
 
   // Load data on mount
   useEffect(() => {
@@ -114,6 +116,27 @@ const NaverReviewManagement = ({ apiBaseUrl, showNotification }) => {
       logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight
     }
   }, [logs])
+
+  // 클립보드 붙여넣기 이벤트 핸들러
+  useEffect(() => {
+    const handlePaste = async (e) => {
+      const items = e.clipboardData?.items
+      if (!items) return
+
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault()
+          const file = item.getAsFile()
+          if (file) {
+            await uploadSingleImage(file)
+          }
+        }
+      }
+    }
+
+    document.addEventListener('paste', handlePaste)
+    return () => document.removeEventListener('paste', handlePaste)
+  }, [apiBaseUrl])
 
   const loadAllData = async () => {
     setLoading(true)
@@ -317,27 +340,73 @@ const NaverReviewManagement = ({ apiBaseUrl, showNotification }) => {
     })
   }
 
-  // Image management
+  // Image management - 단일 이미지 업로드 함수
+  const uploadSingleImage = async (file) => {
+    if (!file || !file.type.startsWith('image/')) {
+      showNotification?.('이미지 파일만 업로드 가능합니다', 'error')
+      return false
+    }
+
+    const formData = new FormData()
+    formData.append('file', file)
+
+    try {
+      await axios.post(`${apiBaseUrl}/naver-review/images`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      showNotification?.(`이미지 업로드 완료: ${file.name}`, 'success')
+      loadImages()
+      return true
+    } catch (error) {
+      console.error('Failed to upload image:', error)
+      showNotification?.(`이미지 업로드 실패: ${file.name}`, 'error')
+      return false
+    }
+  }
+
+  // 파일 선택으로 이미지 업로드
   const handleImageUpload = async (e) => {
     const files = e.target.files
     if (!files || files.length === 0) return
 
     for (const file of files) {
-      const formData = new FormData()
-      formData.append('file', file)
+      await uploadSingleImage(file)
+    }
+  }
 
-      try {
-        await axios.post(`${apiBaseUrl}/naver-review/images`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        })
-      } catch (error) {
-        console.error('Failed to upload image:', error)
-        showNotification?.(`이미지 업로드 실패: ${file.name}`, 'error')
+  // 드래그 앤 드롭 핸들러
+  const handleDragEnter = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    // 자식 요소로 이동할 때는 무시
+    if (e.currentTarget.contains(e.relatedTarget)) return
+    setIsDragging(false)
+  }
+
+  const handleDragOver = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  const handleDrop = async (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+
+    const files = e.dataTransfer?.files
+    if (!files || files.length === 0) return
+
+    for (const file of files) {
+      if (file.type.startsWith('image/')) {
+        await uploadSingleImage(file)
       }
     }
-
-    showNotification?.('이미지가 업로드되었습니다', 'success')
-    loadImages()
   }
 
   const deleteImage = async (imageId) => {
@@ -685,7 +754,14 @@ const NaverReviewManagement = ({ apiBaseUrl, showNotification }) => {
         </div>
 
         {/* Images Section */}
-        <div className="section images-section">
+        <div
+          className={`section images-section ${isDragging ? 'dragging' : ''}`}
+          ref={dropZoneRef}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
           <div className="section-header">
             <h2>이미지 관리</h2>
             <div className="section-actions">
@@ -721,11 +797,26 @@ const NaverReviewManagement = ({ apiBaseUrl, showNotification }) => {
             </div>
           </div>
 
+          {/* 드래그 앤 드롭 / 붙여넣기 안내 영역 */}
+          <div className={`drop-zone ${isDragging ? 'active' : ''}`}>
+            {isDragging ? (
+              <div className="drop-zone-content">
+                <Upload size={48} />
+                <p>여기에 이미지를 놓으세요</p>
+              </div>
+            ) : (
+              <div className="drop-zone-content">
+                <ImageIcon size={32} />
+                <p>이미지를 드래그하거나 <strong>Ctrl+V</strong>로 붙여넣기</p>
+                <span className="drop-zone-hint">PNG, JPG, GIF 지원 (최대 16MB)</span>
+              </div>
+            )}
+          </div>
+
           <div className="images-grid">
             {images.length === 0 ? (
-              <div className="empty-state">
-                <ImageIcon size={48} />
-                <p>업로드된 이미지가 없습니다</p>
+              <div className="empty-state small">
+                <p>저장된 이미지가 없습니다</p>
               </div>
             ) : (
               images.map(image => (
@@ -744,6 +835,13 @@ const NaverReviewManagement = ({ apiBaseUrl, showNotification }) => {
               ))
             )}
           </div>
+
+          {images.length > 0 && (
+            <div className="images-info">
+              <span>{images.length}개 이미지 저장됨</span>
+              <span className="info-hint">리뷰 작성 시 랜덤으로 사용됩니다</span>
+            </div>
+          )}
         </div>
 
         {/* Logs Section */}
