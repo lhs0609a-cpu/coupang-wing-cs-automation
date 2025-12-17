@@ -459,10 +459,16 @@ def run_full_pipeline(limit: int = 10):
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     logger.error(f"Unhandled exception: {str(exc)}")
-    return JSONResponse(
+    response = JSONResponse(
         status_code=500,
         content={"error": "Internal server error", "detail": str(exc)}
     )
+    # Add CORS headers to error response
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Expose-Headers"] = "*"
+    return response
 
 
 if __name__ == "__main__":

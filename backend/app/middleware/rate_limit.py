@@ -3,12 +3,22 @@ Rate Limiting Middleware
 요청 제한 미들웨어
 """
 from fastapi import Request, Response
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from typing import Dict, Optional
 from datetime import datetime, timedelta
 from collections import defaultdict, deque
 import time
 from loguru import logger
+
+
+def add_cors_headers(response: Response) -> Response:
+    """Add CORS headers to response"""
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Expose-Headers"] = "*"
+    return response
 
 
 class RateLimiter:
@@ -169,8 +179,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 reason=info.get("reason")
             )
 
-            from ..core.errors import RateLimitException
-            raise RateLimitException(retry_after=info.get("retry_after_seconds", 60))
+            # Return response directly with CORS headers instead of raising exception
+            retry_after = info.get("retry_after_seconds", 60)
+            response = JSONResponse(
+                status_code=429,
+                content={
+                    "error": True,
+                    "error_code": "ERR_1500",
+                    "message": "Rate limit exceeded",
+                    "details": {"retry_after_seconds": retry_after}
+                }
+            )
+            response.headers["Retry-After"] = str(retry_after)
+            return add_cors_headers(response)
 
         # Add rate limit headers to response
         response = await call_next(request)
@@ -225,8 +246,17 @@ class IPWhitelistMiddleware(BaseHTTPMiddleware):
         if self.whitelist and client_ip not in self.whitelist:
             logger.warning(f"Blocked request from non-whitelisted IP: {client_ip}")
 
-            from ..core.errors import PermissionDeniedException
-            raise PermissionDeniedException("Access denied: IP not whitelisted")
+            # Return response directly with CORS headers instead of raising exception
+            response = JSONResponse(
+                status_code=403,
+                content={
+                    "error": True,
+                    "error_code": "ERR_1104",
+                    "message": "Access denied: IP not whitelisted",
+                    "details": {}
+                }
+            )
+            return add_cors_headers(response)
 
         return await call_next(request)
 

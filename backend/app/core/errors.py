@@ -11,6 +11,16 @@ from enum import Enum
 from loguru import logger
 
 
+def create_error_response(status_code: int, content: dict) -> JSONResponse:
+    """Create JSONResponse with CORS headers for error responses"""
+    response = JSONResponse(status_code=status_code, content=content)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Expose-Headers"] = "*"
+    return response
+
+
 class ErrorCode(str, Enum):
     """표준 에러 코드"""
 
@@ -187,7 +197,7 @@ async def app_exception_handler(request: Request, exc: AppException) -> JSONResp
         trace_id=trace_id
     )
 
-    return JSONResponse(
+    return create_error_response(
         status_code=exc.status_code,
         content={
             "error": True,
@@ -221,7 +231,7 @@ async def validation_exception_handler(
 
     logger.warning(f"[{trace_id}] Validation error: {errors}")
 
-    return JSONResponse(
+    return create_error_response(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
             "error": True,
@@ -256,7 +266,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 
     logger.error(f"[{trace_id}] HTTP {exc.status_code}: {exc.detail}")
 
-    return JSONResponse(
+    return create_error_response(
         status_code=exc.status_code,
         content={
             "error": True,
@@ -295,7 +305,7 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
         trace_id=trace_id
     )
 
-    return JSONResponse(
+    return create_error_response(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "error": True,
