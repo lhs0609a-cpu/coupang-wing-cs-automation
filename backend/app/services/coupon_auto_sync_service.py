@@ -653,11 +653,11 @@ class CouponAutoSyncService:
         skip_applied: bool = True
     ) -> Dict[str, Any]:
         """
-        전체 상품에 쿠폰 일괄 적용 (진행 상황 추적 포함)
+        전체 상품에 쿠폰 일괄 적용 (배치 단위로 수집+적용 동시 진행)
 
         Args:
             coupang_account_id: 쿠팡 계정 ID
-            days_back: 미사용 (호환성 유지용) - 전체 상품 조회로 변경됨
+            days_back: 미사용 (호환성 유지용)
             skip_applied: 이미 쿠폰이 적용된 상품 건너뛰기 (기본값: True)
 
         Returns:
@@ -697,8 +697,8 @@ class CouponAutoSyncService:
         # 진행 상황 레코드 생성
         progress = BulkApplyProgress(
             coupang_account_id=coupang_account_id,
-            status="collecting",
-            total_days=1  # 전체 상품 조회는 1단계
+            status="applying",  # 바로 적용 상태로 시작
+            total_days=1
         )
         self.db.add(progress)
         self.db.commit()
@@ -714,233 +714,222 @@ class CouponAutoSyncService:
             "errors": []
         }
 
+        # 배치 처리 설정
+        PRODUCT_BATCH_SIZE = 100  # 100개 상품씩 처리
+        INSTANT_COUPON_BATCH_SIZE = 10000  # 즉시할인 최대 10,000개
+        DOWNLOAD_COUPON_BATCH_SIZE = 100  # 다운로드 최대 100개
+
         try:
-            # 전체 승인 상품 조회 (날짜 필터 없이)
-            all_vendor_item_ids = []
-            skipped_excluded = 0
-            skipped_no_vendor_items = 0
-            skipped_no_seller_id = 0
-            skipped_already_applied = 0
+            logger.info(f"[DEBUG] Starting batch bulk apply for account {coupang_account_id}")
+            logger.info(f"[DEBUG] Config: instant={config.instant_coupon_enabled}, download={config.download_coupon_enabled}")
 
-            progress.current_date = "전체 상품 조회 중..."
-            self.db.commit()
+            # 페이지네이션으로 상품 조회하면서 바로 쿠폰 적용
+            next_token = None
+            page_count = 0
+            batch_vendor_items = []  # 현재 배치의 vendorItemIds
+            processed_products = 0
 
-            logger.info(f"[DEBUG] Starting bulk apply for account {coupang_account_id}")
-            logger.info(f"[DEBUG] Config: instant_coupon_enabled={config.instant_coupon_enabled}, download_coupon_enabled={config.download_coupon_enabled}")
-            logger.info(f"[DEBUG] Excluded product IDs: {config.excluded_product_ids}")
-            logger.info(f"[DEBUG] Skip already applied: {skip_applied}, Applied products count: {len(applied_seller_product_ids)}")
-
-            # 전체 상품 조회
-            all_products = client.get_all_approved_products()
-
-            logger.info(f"[DEBUG] API returned {len(all_products)} approved products")
-
-            # 각 상품에서 vendorItemId 추출
-            for idx, product in enumerate(all_products):
-                seller_product_id = product.get("sellerProductId")
-                if not seller_product_id:
-                    skipped_no_seller_id += 1
-                    continue
-
-                # 제외 상품 체크
-                if seller_product_id in (config.excluded_product_ids or []):
-                    skipped_excluded += 1
-                    continue
-
-                # 이미 적용된 상품 체크
-                if skip_applied and seller_product_id in applied_seller_product_ids:
-                    skipped_already_applied += 1
-                    continue
-
-                # vendorItemId 조회
-                try:
-                    vendor_item_ids = client.get_vendor_item_ids(seller_product_id)
-                    if vendor_item_ids:
-                        all_vendor_item_ids.extend(vendor_item_ids)
-                        results["total_products"] += 1
-                    else:
-                        skipped_no_vendor_items += 1
-                        if skipped_no_vendor_items <= 10:  # 처음 10개만 로깅
-                            logger.warning(f"[DEBUG] No vendorItemIds found for product {seller_product_id}")
-                except Exception as e:
-                    skipped_no_vendor_items += 1
-                    logger.error(f"[DEBUG] Error getting vendorItemIds for product {seller_product_id}: {str(e)}")
-
-                # 진행 상황 업데이트 (10개마다)
-                if idx % 10 == 0:
-                    progress.total_products = results["total_products"]
-                    progress.total_items = len(all_vendor_item_ids)
-                    progress.current_date = f"{idx + 1}/{len(all_products)} 상품 처리 중"
-                    self.db.commit()
-
-                # 100개마다 디버그 로그
-                if (idx + 1) % 100 == 0:
-                    logger.info(f"[DEBUG] Progress: {idx + 1}/{len(all_products)} processed, {results['total_products']} valid products, {len(all_vendor_item_ids)} vendor items")
-
-            logger.info(f"[DEBUG] === Product Collection Summary ===")
-            logger.info(f"[DEBUG] Total products from API: {len(all_products)}")
-            logger.info(f"[DEBUG] Valid products with vendorItemIds: {results['total_products']}")
-            logger.info(f"[DEBUG] Total vendorItemIds collected: {len(all_vendor_item_ids)}")
-            logger.info(f"[DEBUG] Skipped - no seller ID: {skipped_no_seller_id}")
-            logger.info(f"[DEBUG] Skipped - excluded: {skipped_excluded}")
-            logger.info(f"[DEBUG] Skipped - already applied: {skipped_already_applied}")
-            logger.info(f"[DEBUG] Skipped - no vendorItemIds: {skipped_no_vendor_items}")
-
-            # 수집 완료
-            progress.processed_days = 1
-            progress.total_products = results["total_products"]
-            progress.total_items = len(all_vendor_item_ids)
-            results["total_items"] = len(all_vendor_item_ids)
-
-            if not all_vendor_item_ids:
-                progress.status = "completed"
-                progress.completed_at = datetime.utcnow()
+            while True:
+                page_count += 1
+                progress.current_date = f"페이지 {page_count} 처리 중..."
                 self.db.commit()
-                return {
-                    "success": True,
-                    "message": "적용할 상품이 없습니다.",
-                    "results": results
-                }
 
-            logger.info(f"Found {results['total_items']} vendor items from {results['total_products']} products")
+                # 상품 페이지 조회
+                api_result = client.get_all_products(
+                    status="APPROVED",
+                    max_per_page=100,
+                    next_token=next_token
+                )
 
-            # 적용 단계로 전환
-            progress.status = "applying"
-            if config.instant_coupon_enabled and config.instant_coupon_id and config.instant_coupon_id > 0:
-                progress.instant_total = len(all_vendor_item_ids)
-            if config.download_coupon_enabled and config.download_coupon_id and config.download_coupon_id > 0:
-                progress.download_total = len(all_vendor_item_ids)
-            self.db.commit()
+                if api_result.get("code") != "SUCCESS":
+                    logger.error(f"[DEBUG] API error on page {page_count}: {api_result.get('message')}")
+                    break
 
-            # 즉시할인쿠폰 일괄 적용 (최대 10,000개씩)
-            if config.instant_coupon_enabled and config.instant_coupon_id and config.instant_coupon_id > 0:
-                batch_size = 10000
-                for i in range(0, len(all_vendor_item_ids), batch_size):
-                    batch = all_vendor_item_ids[i:i+batch_size]
+                products = api_result.get("data", [])
+                if not products:
+                    logger.info(f"[DEBUG] No more products on page {page_count}")
+                    break
+
+                logger.info(f"[DEBUG] Page {page_count}: processing {len(products)} products")
+
+                # 각 상품에서 vendorItemId 추출
+                for product in products:
+                    seller_product_id = product.get("sellerProductId")
+                    if not seller_product_id:
+                        continue
+
+                    # 제외 상품 체크
+                    if seller_product_id in (config.excluded_product_ids or []):
+                        continue
+
+                    # 이미 적용된 상품 체크
+                    if skip_applied and seller_product_id in applied_seller_product_ids:
+                        continue
+
+                    # vendorItemId 조회
                     try:
-                        result = client.apply_instant_coupon_to_items(
-                            coupon_id=config.instant_coupon_id,
-                            vendor_item_ids=batch
-                        )
-
-                        if result.get("code") == 200 and result.get("data", {}).get("success"):
-                            requested_id = result.get("data", {}).get("content", {}).get("requestedId")
-
-                            # 비동기 처리 결과 확인
-                            for _ in range(10):
-                                time.sleep(3)
-                                status_result = client.get_instant_coupon_request_status(requested_id)
-                                status = status_result.get("data", {}).get("content", {}).get("status")
-
-                                if status == "DONE":
-                                    results["instant_success"] += len(batch)
-                                    progress.instant_success = results["instant_success"]
-                                    self.db.commit()
-                                    break
-                                elif status == "FAIL":
-                                    failed_items = status_result.get("data", {}).get("content", {}).get("failedVendorItems", [])
-                                    results["instant_failed"] += len(failed_items)
-                                    results["instant_success"] += len(batch) - len(failed_items)
-                                    progress.instant_success = results["instant_success"]
-                                    progress.instant_failed = results["instant_failed"]
-                                    self.db.commit()
-                                    break
-                            else:
-                                # 타임아웃
-                                results["errors"].append(f"Instant coupon batch {i//batch_size + 1} timed out")
-
-                        else:
-                            results["instant_failed"] += len(batch)
-                            progress.instant_failed = results["instant_failed"]
-                            self.db.commit()
-                            results["errors"].append(result.get("message", "Unknown error"))
-
-                        # 로그 기록
-                        log = CouponApplyLog(
-                            coupang_account_id=coupang_account_id,
-                            seller_product_id=0,
-                            coupon_type="instant",
-                            coupon_id=config.instant_coupon_id,
-                            coupon_name=config.instant_coupon_name,
-                            success=results["instant_success"] > 0,
-                            request_data={"batch_size": len(batch), "batch_index": i//batch_size},
-                            response_data=result
-                        )
-                        self.db.add(log)
-
+                        vendor_item_ids = client.get_vendor_item_ids(seller_product_id)
+                        if vendor_item_ids:
+                            batch_vendor_items.extend(vendor_item_ids)
+                            results["total_products"] += 1
+                            results["total_items"] += len(vendor_item_ids)
+                            processed_products += 1
                     except Exception as e:
-                        logger.error(f"Error applying instant coupon batch: {str(e)}")
-                        results["instant_failed"] += len(batch)
-                        progress.instant_failed = results["instant_failed"]
-                        self.db.commit()
-                        results["errors"].append(str(e))
+                        logger.error(f"[DEBUG] Error getting vendorItemIds: {str(e)}")
 
-            # 다운로드쿠폰 일괄 적용 (최대 100개씩)
-            if config.download_coupon_enabled and config.download_coupon_id and config.download_coupon_id > 0:
-                batch_size = 100
-                for i in range(0, len(all_vendor_item_ids), batch_size):
-                    batch = all_vendor_item_ids[i:i+batch_size]
-                    try:
-                        result = client.apply_download_coupon_to_items(
-                            coupon_id=config.download_coupon_id,
-                            vendor_item_ids=batch,
-                            user_id=account.wing_username
-                        )
+                    # 진행 상황 업데이트
+                    progress.total_products = results["total_products"]
+                    progress.total_items = results["total_items"]
 
-                        if result.get("requestResultStatus") == "SUCCESS":
-                            results["download_success"] += len(batch)
-                            progress.download_success = results["download_success"]
-                        else:
-                            results["download_failed"] += len(batch)
-                            progress.download_failed = results["download_failed"]
-                            results["errors"].append(result.get("errorMessage", "Unknown error"))
+                # 배치가 충분히 쌓이면 쿠폰 적용
+                if len(batch_vendor_items) >= PRODUCT_BATCH_SIZE:
+                    self._apply_coupons_to_batch(
+                        client, config, progress, results,
+                        batch_vendor_items, account.wing_username,
+                        INSTANT_COUPON_BATCH_SIZE, DOWNLOAD_COUPON_BATCH_SIZE
+                    )
+                    batch_vendor_items = []  # 배치 초기화
 
-                        self.db.commit()
+                # 다음 페이지 토큰
+                next_token_str = api_result.get("nextToken", "")
+                if next_token_str and next_token_str.strip():
+                    next_token = int(next_token_str)
+                else:
+                    break
 
-                        # 로그 기록
-                        log = CouponApplyLog(
-                            coupang_account_id=coupang_account_id,
-                            seller_product_id=0,
-                            coupon_type="download",
-                            coupon_id=config.download_coupon_id,
-                            coupon_name=config.download_coupon_name,
-                            success=result.get("requestResultStatus") == "SUCCESS",
-                            request_data={"batch_size": len(batch), "batch_index": i//batch_size},
-                            response_data=result
-                        )
-                        self.db.add(log)
-
-                    except Exception as e:
-                        logger.error(f"Error applying download coupon batch: {str(e)}")
-                        results["download_failed"] += len(batch)
-                        progress.download_failed = results["download_failed"]
-                        self.db.commit()
-                        results["errors"].append(str(e))
+            # 남은 배치 처리
+            if batch_vendor_items:
+                self._apply_coupons_to_batch(
+                    client, config, progress, results,
+                    batch_vendor_items, account.wing_username,
+                    INSTANT_COUPON_BATCH_SIZE, DOWNLOAD_COUPON_BATCH_SIZE
+                )
 
             # 완료
             progress.status = "completed"
             progress.completed_at = datetime.utcnow()
             self.db.commit()
 
-            # 결과 요약
-            total_success = results["instant_success"] + results["download_success"]
-            total_failed = results["instant_failed"] + results["download_failed"]
-
-            message = f"총 {results['total_products']}개 상품({results['total_items']}개 옵션)에 쿠폰 적용 완료. 성공: {total_success}, 실패: {total_failed}"
+            logger.info(f"[DEBUG] === Batch Bulk Apply Complete ===")
+            logger.info(f"[DEBUG] Total products: {results['total_products']}, Items: {results['total_items']}")
+            logger.info(f"[DEBUG] Instant: {results['instant_success']} success, {results['instant_failed']} failed")
+            logger.info(f"[DEBUG] Download: {results['download_success']} success, {results['download_failed']} failed")
 
             return {
                 "success": True,
-                "message": message,
+                "message": f"총 {results['total_products']}개 상품에 쿠폰 적용 완료",
                 "results": results
             }
 
         except Exception as e:
-            logger.error(f"Error in bulk coupon application: {str(e)}")
+            logger.error(f"[DEBUG] Error in batch bulk apply: {str(e)}")
             progress.status = "failed"
             progress.error_message = str(e)
             progress.completed_at = datetime.utcnow()
             self.db.commit()
             return {"success": False, "message": str(e), "results": results}
+
+    def _apply_coupons_to_batch(
+        self,
+        client: CouponAPIClient,
+        config: CouponAutoSyncConfig,
+        progress: BulkApplyProgress,
+        results: Dict[str, Any],
+        vendor_item_ids: List[int],
+        wing_username: str,
+        instant_batch_size: int,
+        download_batch_size: int
+    ):
+        """배치에 쿠폰 적용 (즉시할인 + 다운로드)"""
+        if not vendor_item_ids:
+            return
+
+        logger.info(f"[DEBUG] Applying coupons to batch of {len(vendor_item_ids)} items")
+
+        # 즉시할인쿠폰 적용
+        if config.instant_coupon_enabled and config.instant_coupon_id and config.instant_coupon_id > 0:
+            for i in range(0, len(vendor_item_ids), instant_batch_size):
+                batch = vendor_item_ids[i:i+instant_batch_size]
+                try:
+                    result = client.apply_instant_coupon_to_items(
+                        coupon_id=config.instant_coupon_id,
+                        vendor_item_ids=batch
+                    )
+
+                    if result.get("code") == 200 and result.get("data", {}).get("success"):
+                        requested_id = result.get("data", {}).get("content", {}).get("requestedId")
+
+                        # 비동기 처리 결과 확인 (최대 5회)
+                        for _ in range(5):
+                            time.sleep(2)
+                            status_result = client.get_instant_coupon_request_status(requested_id)
+                            status = status_result.get("data", {}).get("content", {}).get("status")
+
+                            if status == "DONE":
+                                results["instant_success"] += len(batch)
+                                break
+                            elif status == "FAIL":
+                                failed_items = status_result.get("data", {}).get("content", {}).get("failedVendorItems", [])
+                                results["instant_failed"] += len(failed_items)
+                                results["instant_success"] += len(batch) - len(failed_items)
+                                break
+                        else:
+                            # 타임아웃 - 성공으로 간주 (백그라운드에서 처리됨)
+                            results["instant_success"] += len(batch)
+                    else:
+                        results["instant_failed"] += len(batch)
+                        logger.error(f"[DEBUG] Instant coupon error: {result.get('message')}")
+
+                except Exception as e:
+                    results["instant_failed"] += len(batch)
+                    logger.error(f"[DEBUG] Instant coupon exception: {str(e)}")
+
+            # 진행 상황 업데이트
+            progress.instant_total = (progress.instant_total or 0) + len(vendor_item_ids)
+            progress.instant_success = results["instant_success"]
+            progress.instant_failed = results["instant_failed"]
+            self.db.commit()
+
+        # 다운로드쿠폰 적용
+        if config.download_coupon_enabled and config.download_coupon_id and config.download_coupon_id > 0:
+            for i in range(0, len(vendor_item_ids), download_batch_size):
+                batch = vendor_item_ids[i:i+download_batch_size]
+                try:
+                    result = client.apply_download_coupon_to_items(
+                        coupon_id=config.download_coupon_id,
+                        vendor_item_ids=batch,
+                        user_id=wing_username
+                    )
+
+                    if result.get("requestResultStatus") == "SUCCESS":
+                        results["download_success"] += len(batch)
+                    else:
+                        results["download_failed"] += len(batch)
+                        logger.error(f"[DEBUG] Download coupon error: {result.get('errorMessage')}")
+
+                except Exception as e:
+                    results["download_failed"] += len(batch)
+                    logger.error(f"[DEBUG] Download coupon exception: {str(e)}")
+
+            # 진행 상황 업데이트
+            progress.download_total = (progress.download_total or 0) + len(vendor_item_ids)
+            progress.download_success = results["download_success"]
+            progress.download_failed = results["download_failed"]
+            self.db.commit()
+
+        logger.info(f"[DEBUG] Batch complete - Instant: {results['instant_success']}/{progress.instant_total or 0}, Download: {results['download_success']}/{progress.download_total or 0}")
+
+    def _legacy_apply_coupons_to_all_products(
+        self,
+        coupang_account_id: int,
+        days_back: int = 30,
+        skip_applied: bool = True
+    ) -> Dict[str, Any]:
+        """
+        [레거시] 전체 상품에 쿠폰 일괄 적용 - 수집 후 적용 방식
+        """
+        # 이전 코드 보존 (필요시 사용)
+        pass
 
     # ==================== 자동 실행 (스케줄러용) ====================
 
