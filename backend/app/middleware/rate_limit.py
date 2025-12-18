@@ -154,7 +154,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             "/health",
             "/docs",
             "/redoc",
-            "/openapi.json"
+            "/openapi.json",
+            "/api/promotion/progress",  # Progress polling endpoint
+            "/api/automation/stats",    # Dashboard stats polling
+            "/api/system/stats",        # System stats polling
         ]
 
     async def dispatch(self, request: Request, call_next):

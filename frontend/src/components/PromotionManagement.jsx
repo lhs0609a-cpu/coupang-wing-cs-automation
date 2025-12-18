@@ -107,7 +107,7 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
     if (bulkApplyProgress && (bulkApplyProgress.status === 'collecting' || bulkApplyProgress.status === 'applying')) {
       interval = setInterval(() => {
         loadBulkApplyProgress()
-      }, 2000) // 2초마다 업데이트
+      }, 5000) // 5초마다 업데이트
     }
     return () => {
       if (interval) clearInterval(interval)
