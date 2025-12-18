@@ -165,6 +165,49 @@ class CouponAutoSyncService:
             # API가 지원되지 않는 경우 빈 배열 반환 (410 Gone 등)
             return {"success": False, "message": "다운로드 쿠폰 목록 조회 API가 지원되지 않습니다. 쿠폰 ID를 직접 입력해주세요.", "coupons": []}
 
+    def get_download_coupon_by_id(self, coupang_account_id: int, coupon_id: int) -> Dict[str, Any]:
+        """다운로드쿠폰 단건 조회 (쿠폰 ID로 직접 조회)"""
+        account = self.db.query(CoupangAccount).filter(
+            CoupangAccount.id == coupang_account_id
+        ).first()
+
+        if not account:
+            return {"success": False, "message": "계정을 찾을 수 없습니다."}
+
+        client = self._get_api_client(account)
+
+        try:
+            result = client.get_download_coupon(coupon_id)
+
+            # 에러 응답 처리
+            if result.get("code") in ["NOT_FOUND", "FORBIDDEN", "ERROR"]:
+                return {"success": False, "message": result.get("message", "쿠폰을 찾을 수 없습니다.")}
+
+            # 성공 응답 처리
+            coupon_data = result.get("data") or result
+
+            # API 응답에서 쿠폰 정보 추출
+            coupon = {
+                "couponId": coupon_data.get("couponId") or coupon_id,
+                "couponName": coupon_data.get("title") or coupon_data.get("couponName") or f"쿠폰 #{coupon_id}",
+                "discountType": coupon_data.get("discountType"),
+                "discountValue": coupon_data.get("discountValue"),
+                "status": coupon_data.get("status"),
+                "startDate": coupon_data.get("startDate"),
+                "endDate": coupon_data.get("endDate"),
+                # 추가 정보
+                "maxDiscountPrice": coupon_data.get("maxDiscountPrice"),
+                "minOrderPrice": coupon_data.get("minOrderPrice"),
+                "couponCount": coupon_data.get("couponCount"),
+            }
+
+            logger.info(f"Download coupon {coupon_id} fetched successfully: {coupon}")
+            return {"success": True, "coupon": coupon}
+
+        except Exception as e:
+            logger.error(f"Error fetching download coupon {coupon_id}: {str(e)}")
+            return {"success": False, "message": str(e)}
+
     # ==================== 신규 상품 감지 ====================
 
     def detect_new_products(self, coupang_account_id: int, target_date: str = None) -> Dict[str, Any]:

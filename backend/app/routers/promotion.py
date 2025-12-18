@@ -219,6 +219,28 @@ async def get_download_coupons(
         return {"success": False, "message": f"다운로드 쿠폰 조회 실패: {str(e)}", "coupons": []}
 
 
+@router.get("/coupons/download/{account_id}/{coupon_id}")
+async def get_download_coupon_by_id(
+    account_id: int,
+    coupon_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    다운로드쿠폰 단건 조회 (쿠폰 ID로 직접 조회)
+
+    Args:
+        account_id: 쿠팡 계정 ID
+        coupon_id: 쿠폰 ID
+    """
+    try:
+        service = CouponAutoSyncService(db)
+        result = service.get_download_coupon_by_id(account_id, coupon_id)
+        return result
+    except Exception as e:
+        logger.error(f"Error getting download coupon {coupon_id}: {str(e)}", exc_info=True)
+        return {"success": False, "message": f"쿠폰 조회 실패: {str(e)}"}
+
+
 # ==================== 수동 동기화 API ====================
 
 @router.post("/sync/{account_id}/detect")

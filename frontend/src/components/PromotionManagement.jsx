@@ -207,6 +207,34 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
     }
   }
 
+  // 다운로드쿠폰 단건 조회 (쿠폰 ID로 직접 조회)
+  const fetchDownloadCouponById = async () => {
+    if (!selectedAccount || !couponForm.download_coupon_id) {
+      showNotification('쿠폰 ID를 입력해주세요', 'error')
+      return
+    }
+
+    try {
+      const response = await axios.get(
+        `${apiBaseUrl}/promotion/coupons/download/${selectedAccount}/${couponForm.download_coupon_id}`
+      )
+
+      if (response.data.success && response.data.coupon) {
+        const coupon = response.data.coupon
+        setCouponForm(prev => ({
+          ...prev,
+          download_coupon_name: coupon.couponName || `쿠폰 #${coupon.couponId}`
+        }))
+        showNotification(`쿠폰 조회 성공: ${coupon.couponName}`, 'success')
+      } else {
+        showNotification(response.data.message || '쿠폰을 찾을 수 없습니다', 'error')
+      }
+    } catch (error) {
+      console.error('Failed to fetch download coupon:', error)
+      showNotification('쿠폰 조회에 실패했습니다', 'error')
+    }
+  }
+
   const loadTrackingList = async (status = null) => {
     if (!selectedAccount) return
     try {
@@ -760,16 +788,26 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
               <div className="coupon-card-body">
                 <div className="form-row">
                   <label>쿠폰 ID</label>
-                  <input
-                    type="number"
-                    placeholder="쿠폰 ID를 입력하세요"
-                    value={couponForm.download_coupon_id}
-                    onChange={(e) => setCouponForm(prev => ({
-                      ...prev,
-                      download_coupon_id: e.target.value
-                    }))}
-                  />
-                  <p className="help-text">쿠팡윙 → 할인쿠폰 관리에서 쿠폰 ID를 확인하세요</p>
+                  <div className="input-with-button">
+                    <input
+                      type="number"
+                      placeholder="쿠폰 ID를 입력하세요"
+                      value={couponForm.download_coupon_id}
+                      onChange={(e) => setCouponForm(prev => ({
+                        ...prev,
+                        download_coupon_id: e.target.value
+                      }))}
+                    />
+                    <button
+                      className="fetch-coupon-btn"
+                      onClick={fetchDownloadCouponById}
+                      disabled={!couponForm.download_coupon_id}
+                    >
+                      <Search size={14} />
+                      조회
+                    </button>
+                  </div>
+                  <p className="help-text">쿠팡윙 → 할인쿠폰 관리에서 쿠폰 ID를 확인 후 입력하고 조회 버튼을 클릭하세요</p>
                 </div>
 
                 <div className="form-row">
@@ -786,7 +824,7 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
                 </div>
 
                 <div className="coupon-select-wrapper">
-                  <label>또는 기존 쿠폰에서 선택</label>
+                  <label>또는 기존 쿠폰에서 선택 (목록이 비어있을 수 있음)</label>
                   <div className="select-with-button">
                     <select
                       value={couponForm.download_coupon_id}
@@ -814,7 +852,7 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
                       불러오기
                     </button>
                   </div>
-                  <p className="help-text warning">* 쿠팡 API 제한으로 목록 조회가 불가할 수 있습니다</p>
+                  <p className="help-text warning">* 쿠팡 API 제한으로 목록 조회가 불가할 수 있습니다. 쿠폰 ID를 직접 입력 후 조회 버튼을 사용하세요.</p>
                 </div>
               </div>
             )}
