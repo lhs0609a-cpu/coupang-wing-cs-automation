@@ -149,15 +149,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.rate_limiter = RateLimiter(**kwargs)
 
-        # Paths to exclude from rate limiting
+        # Paths to exclude from rate limiting (polling & frequently called endpoints)
         self.excluded_paths = [
             "/health",
             "/docs",
             "/redoc",
             "/openapi.json",
-            "/api/promotion/progress",  # Progress polling endpoint
-            "/api/automation/stats",    # Dashboard stats polling
-            "/api/system/stats",        # System stats polling
+            "/api/promotion/progress",      # Progress polling endpoint
+            "/api/automation/stats",        # Dashboard stats polling
+            "/api/automation/chatgpt",      # ChatGPT status
+            "/api/system/stats",            # System stats polling
+            "/api/responses/pending",       # Pending responses polling
+            "/api/returns/statistics",      # Returns statistics
+            "/api/returns/list",            # Returns list
+            "/api/accounts",                # Account endpoints
+            "/api/naver",                   # Naver account endpoints
         ]
 
     async def dispatch(self, request: Request, call_next):
