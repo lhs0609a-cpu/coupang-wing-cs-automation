@@ -883,41 +883,49 @@ class CouponAutoSyncService:
 
         # 즉시할인쿠폰 적용
         if config.instant_coupon_enabled and config.instant_coupon_id and config.instant_coupon_id > 0:
+            logger.info(f"[DEBUG] Applying instant coupon {config.instant_coupon_id} to {len(vendor_item_ids)} items")
             for i in range(0, len(vendor_item_ids), instant_batch_size):
                 batch = vendor_item_ids[i:i+instant_batch_size]
                 try:
+                    logger.info(f"[DEBUG] Calling apply_instant_coupon_to_items with coupon_id={config.instant_coupon_id}, batch_size={len(batch)}")
                     result = client.apply_instant_coupon_to_items(
                         coupon_id=config.instant_coupon_id,
                         vendor_item_ids=batch
                     )
+                    logger.info(f"[DEBUG] Instant coupon API response: {result}")
 
                     if result.get("code") == 200 and result.get("data", {}).get("success"):
                         requested_id = result.get("data", {}).get("content", {}).get("requestedId")
+                        logger.info(f"[DEBUG] Instant coupon request submitted, requestedId={requested_id}")
 
                         # 비동기 처리 결과 확인 (최대 5회)
-                        for _ in range(5):
+                        for check_num in range(5):
                             time.sleep(2)
                             status_result = client.get_instant_coupon_request_status(requested_id)
                             status = status_result.get("data", {}).get("content", {}).get("status")
+                            logger.info(f"[DEBUG] Status check {check_num+1}: {status}")
 
                             if status == "DONE":
                                 results["instant_success"] += len(batch)
+                                logger.info(f"[DEBUG] Batch completed successfully: {len(batch)} items")
                                 break
                             elif status == "FAIL":
                                 failed_items = status_result.get("data", {}).get("content", {}).get("failedVendorItems", [])
                                 results["instant_failed"] += len(failed_items)
                                 results["instant_success"] += len(batch) - len(failed_items)
+                                logger.warning(f"[DEBUG] Batch failed: {len(failed_items)} items failed, {len(batch) - len(failed_items)} succeeded")
                                 break
                         else:
                             # 타임아웃 - 성공으로 간주 (백그라운드에서 처리됨)
                             results["instant_success"] += len(batch)
+                            logger.info(f"[DEBUG] Status check timeout, assuming success: {len(batch)} items")
                     else:
                         results["instant_failed"] += len(batch)
-                        logger.error(f"[DEBUG] Instant coupon error: {result.get('message')}")
+                        logger.error(f"[DEBUG] Instant coupon API failed - code: {result.get('code')}, message: {result.get('message')}, full response: {result}")
 
                 except Exception as e:
                     results["instant_failed"] += len(batch)
-                    logger.error(f"[DEBUG] Instant coupon exception: {str(e)}")
+                    logger.error(f"[DEBUG] Instant coupon exception: {str(e)}", exc_info=True)
 
             # 진행 상황 업데이트
             progress.instant_total = (progress.instant_total or 0) + len(vendor_item_ids)
