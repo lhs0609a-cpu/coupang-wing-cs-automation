@@ -597,6 +597,53 @@ class CouponAutoSyncService:
             BulkApplyProgress.coupang_account_id == coupang_account_id
         ).order_by(BulkApplyProgress.started_at.desc()).first()
 
+    def cancel_bulk_apply_progress(self, coupang_account_id: int) -> Dict[str, Any]:
+        """
+        진행 중인 일괄 적용 작업 취소/리셋
+
+        Args:
+            coupang_account_id: 쿠팡 계정 ID
+
+        Returns:
+            취소 결과
+        """
+        # 진행 중인 작업 조회
+        progress = self.db.query(BulkApplyProgress).filter(
+            BulkApplyProgress.coupang_account_id == coupang_account_id,
+            BulkApplyProgress.status.in_(["collecting", "applying"])
+        ).first()
+
+        if not progress:
+            # 진행 중인 작업이 없으면 최근 작업을 찾아서 리셋
+            latest = self.get_latest_bulk_apply_progress(coupang_account_id)
+            if latest and latest.status not in ["completed", "failed"]:
+                latest.status = "cancelled"
+                latest.completed_at = datetime.utcnow()
+                latest.error_message = "사용자에 의해 취소됨"
+                self.db.commit()
+                logger.info(f"[DEBUG] Cancelled stuck bulk apply progress for account {coupang_account_id}")
+                return {
+                    "success": True,
+                    "message": "멈춘 작업이 취소되었습니다. 다시 시작할 수 있습니다."
+                }
+            return {
+                "success": True,
+                "message": "취소할 작업이 없습니다."
+            }
+
+        # 진행 중인 작업 취소
+        progress.status = "cancelled"
+        progress.completed_at = datetime.utcnow()
+        progress.error_message = "사용자에 의해 취소됨"
+        self.db.commit()
+
+        logger.info(f"[DEBUG] Cancelled bulk apply progress for account {coupang_account_id}")
+
+        return {
+            "success": True,
+            "message": "작업이 취소되었습니다. 새로 시작할 수 있습니다."
+        }
+
     # ==================== 전체 상품 일괄 적용 ====================
 
     def apply_coupons_to_all_products(

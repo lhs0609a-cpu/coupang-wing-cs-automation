@@ -396,6 +396,29 @@ async def get_bulk_apply_progress(account_id: int, db: Session = Depends(get_db)
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/progress/{account_id}")
+async def cancel_bulk_apply_progress(account_id: int, db: Session = Depends(get_db)):
+    """
+    진행 중인 일괄 적용 작업 취소/리셋
+
+    Args:
+        account_id: 쿠팡 계정 ID
+    """
+    try:
+        service = CouponAutoSyncService(db)
+        result = service.cancel_bulk_apply_progress(account_id)
+
+        if result["success"]:
+            return result
+        else:
+            raise HTTPException(status_code=400, detail=result["message"])
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error cancelling bulk apply progress: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== 추적/이력 조회 API ====================
 
 @router.get("/tracking/{account_id}")

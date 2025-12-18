@@ -23,7 +23,9 @@ import {
   Info,
   Percent,
   DollarSign,
-  Save
+  Save,
+  XCircle,
+  StopCircle
 } from 'lucide-react'
 import '../styles/PromotionManagement.css'
 
@@ -216,6 +218,29 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
       setStatistics(response.data.statistics || response.data)
     } catch (error) {
       console.error('Failed to load statistics:', error)
+    }
+  }
+
+  // 진행 중인 작업 취소
+  const cancelBulkApply = async () => {
+    if (!selectedAccount) return
+
+    if (!window.confirm('진행 중인 작업을 취소하시겠습니까?')) {
+      return
+    }
+
+    try {
+      const response = await axios.delete(`${apiBaseUrl}/promotion/progress/${selectedAccount}`)
+      if (response.data.success) {
+        showNotification(response.data.message, 'success')
+        setBulkApplyProgress(null)
+        setBulkApplyInProgress(false)
+        // 진행 상황 새로고침
+        await loadBulkApplyProgress()
+      }
+    } catch (error) {
+      console.error('Failed to cancel bulk apply:', error)
+      showNotification('작업 취소에 실패했습니다', 'error')
     }
   }
 
@@ -428,6 +453,19 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
           {started_at && <span>시작: {new Date(started_at).toLocaleString()}</span>}
           {completed_at && <span>완료: {new Date(completed_at).toLocaleString()}</span>}
         </div>
+
+        {/* 취소 버튼 - 진행 중이거나 멈춘 작업에만 표시 */}
+        {(isInProgress || (status !== 'completed' && status !== 'failed' && status !== 'cancelled')) && (
+          <div className="progress-actions">
+            <button
+              className="cancel-button"
+              onClick={cancelBulkApply}
+            >
+              <StopCircle size={16} />
+              <span>작업 취소</span>
+            </button>
+          </div>
+        )}
       </motion.div>
     )
   }
