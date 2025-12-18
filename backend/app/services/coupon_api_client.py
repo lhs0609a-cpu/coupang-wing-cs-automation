@@ -328,42 +328,72 @@ class CouponAPIClient:
 
             # 응답 로깅
             logger.info(f"Download coupon response status: {response.status_code}")
-            logger.info(f"Download coupon response body: {response.text[:500] if response.text else 'empty'}")
+            logger.info(f"Download coupon response body: {response.text[:1000] if response.text else 'empty'}")
+
+            # 응답 파싱 (에러든 성공이든 일단 파싱)
+            try:
+                result = response.json() if response.text else {}
+            except:
+                result = {"raw": response.text}
+
+            # 배열 응답 처리 (쿠팡 API는 배열로 응답)
+            if isinstance(result, list) and len(result) > 0:
+                result = result[0]  # 첫 번째 요소 사용
 
             # 에러 응답 처리
-            if response.status_code == 400:
-                try:
-                    error_data = response.json() if response.text else {}
-                except:
-                    error_data = {"raw": response.text}
-                logger.error(f"Download coupon 400 error: {error_data}")
+            if response.status_code >= 400:
+                error_msg = (
+                    result.get("errorMessage") or
+                    result.get("message") or
+                    result.get("raw") or
+                    f"HTTP {response.status_code} 에러"
+                )
+                error_code = result.get("errorCode", "UNKNOWN")
+
+                logger.error(f"Download coupon error: status={response.status_code}, code={error_code}, message={error_msg}")
+
+                # 구체적인 에러 메시지 매핑
+                if "deleted" in error_msg.lower():
+                    error_msg = f"쿠폰이 삭제되었습니다. 새 쿠폰을 생성해주세요. (원본: {error_msg})"
+                elif "not started" in error_msg.lower() or "시작" in error_msg:
+                    error_msg = f"쿠폰이 아직 시작되지 않았습니다. 시작일을 확인해주세요. (원본: {error_msg})"
+                elif response.status_code == 403:
+                    error_msg = "접근 권한이 없습니다. API 키를 확인해주세요."
+                elif response.status_code == 404:
+                    error_msg = f"쿠폰 ID {coupon_id}를 찾을 수 없습니다."
+
                 return {
                     "requestResultStatus": "FAILED",
-                    "errorMessage": error_data.get("message") or error_data.get("errorMessage") or f"잘못된 요청: {response.text[:200]}"
-                }
-            if response.status_code == 403:
-                logger.error(f"Download coupon 403 error: {response.text}")
-                return {
-                    "requestResultStatus": "FAILED",
-                    "errorMessage": "접근 권한이 없습니다. API 키를 확인해주세요."
-                }
-            if response.status_code == 404:
-                logger.error(f"Download coupon 404 error: {response.text}")
-                return {
-                    "requestResultStatus": "FAILED",
-                    "errorMessage": f"쿠폰 ID {coupon_id}를 찾을 수 없습니다."
+                    "errorCode": error_code,
+                    "errorMessage": error_msg
                 }
 
-            response.raise_for_status()
-            result = response.json()
-            logger.info(f"Download coupon success response: {result}")
-            return result
+            # 성공 응답 처리
+            request_status = result.get("requestResultStatus", "UNKNOWN")
+            if request_status == "SUCCESS":
+                logger.info(f"Download coupon applied successfully")
+                return {
+                    "requestResultStatus": "SUCCESS",
+                    "body": result.get("body")
+                }
+            elif request_status == "FAIL":
+                error_msg = result.get("errorMessage", "알 수 없는 오류")
+                logger.error(f"Download coupon application failed: {error_msg}")
+                return {
+                    "requestResultStatus": "FAILED",
+                    "errorCode": result.get("errorCode", "UNKNOWN"),
+                    "errorMessage": error_msg
+                }
+            else:
+                # UNKNOWN 상태 - 응답 그대로 반환
+                logger.warning(f"Download coupon unknown response: {result}")
+                return result
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Error applying download coupon: {str(e)}", exc_info=True)
             return {
                 "requestResultStatus": "FAILED",
-                "errorMessage": str(e)
+                "errorMessage": f"네트워크 오류: {str(e)}"
             }
 
     def get_download_coupon_request_status(self, request_transaction_id: str) -> Dict[str, Any]:

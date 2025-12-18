@@ -549,12 +549,16 @@ class CouponAutoSyncService:
                     response_data=result
                 )
 
-                if result.get("requestResultStatus") == "SUCCESS":
+                request_status = result.get("requestResultStatus", "").upper()
+                if request_status == "SUCCESS":
                     log.success = True
+                    logger.info(f"Download coupon batch {i//batch_size + 1} applied successfully")
                 else:
                     all_success = False
                     log.success = False
-                    log.error_message = result.get("errorMessage", "알 수 없는 오류")
+                    error_msg = result.get("errorMessage", "알 수 없는 오류")
+                    log.error_message = error_msg
+                    logger.error(f"Download coupon batch {i//batch_size + 1} failed: {error_msg}")
 
                 self.db.add(log)
 
