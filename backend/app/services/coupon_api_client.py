@@ -229,11 +229,19 @@ class CouponAPIClient:
 
         try:
             response = requests.get(url, headers=headers, timeout=30)
+            # 400 에러 등 API 미지원 시 빈 배열 반환
+            if response.status_code == 400:
+                logger.warning(f"Download coupons API returned 400 - API may not be supported")
+                return {"code": "NOT_SUPPORTED", "message": "API 미지원", "content": []}
+            if response.status_code == 403:
+                logger.warning(f"Download coupons API returned 403 - Access denied")
+                return {"code": "FORBIDDEN", "message": "접근 권한 없음", "content": []}
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
             logger.error(f"Error fetching download coupons: {str(e)}")
-            raise
+            # 예외 발생 시에도 빈 배열 반환 (프론트엔드 에러 방지)
+            return {"code": "ERROR", "message": str(e), "content": []}
 
     def get_download_coupon(self, coupon_id: int) -> Dict[str, Any]:
         """
@@ -253,11 +261,18 @@ class CouponAPIClient:
 
         try:
             response = requests.get(url, headers=headers, timeout=30)
+            # 400/404 에러 시 None 반환
+            if response.status_code in [400, 404]:
+                logger.warning(f"Download coupon {coupon_id} not found or API error")
+                return {"code": "NOT_FOUND", "message": f"쿠폰 {coupon_id}을(를) 찾을 수 없습니다"}
+            if response.status_code == 403:
+                logger.warning(f"Download coupon API returned 403 - Access denied")
+                return {"code": "FORBIDDEN", "message": "접근 권한 없음"}
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
             logger.error(f"Error fetching download coupon {coupon_id}: {str(e)}")
-            raise
+            return {"code": "ERROR", "message": str(e)}
 
     def apply_download_coupon_to_items(
         self,
