@@ -963,7 +963,18 @@ const NaverReviewManagement = ({ apiBaseUrl: cloudApiBaseUrl, showNotification }
                   <img
                     src={`${apiBaseUrl}/naver-review/images/file/${image.filename}`}
                     alt={image.original_filename}
+                    onError={(e) => {
+                      e.target.onerror = null
+                      e.target.style.display = 'none'
+                      e.target.parentElement.classList.add('image-error')
+                    }}
+                    loading="lazy"
+                    crossOrigin="anonymous"
                   />
+                  <div className="image-error-placeholder">
+                    <ImageIcon size={24} />
+                    <span>이미지 로드 실패</span>
+                  </div>
                   <button
                     className="image-delete"
                     onClick={() => deleteImage(image.id)}

@@ -282,6 +282,31 @@
   opacity: 1;
 }
 
+/* Image Error Placeholder */
+.image-error-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  gap: 4px;
+}
+
+.image-card.image-error .image-error-placeholder {
+  display: flex;
+}
+
+.image-card.image-error .image-delete {
+  opacity: 1;
+}
+
 /* Logs Section */
 .logs-section {
   grid-column: 2;

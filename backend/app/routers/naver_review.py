@@ -34,12 +34,18 @@ from ..services.naver_review_automation import (
 router = APIRouter(prefix="/naver-review", tags=["naver-review"])
 
 # 업로드 설정
-UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "static", "naver_review_uploads")
+# Fly.io에서는 /data 볼륨 사용, 로컬에서는 static 폴더 사용
+if os.path.exists("/data"):
+    UPLOAD_FOLDER = "/data/naver_review_uploads"
+else:
+    UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "static", "naver_review_uploads")
+
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'}
 MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
 
 # 업로드 폴더 생성
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+logger.info(f"Naver Review upload folder: {UPLOAD_FOLDER}")
 
 # 실시간 로그 저장 (메모리)
 _realtime_logs = []
@@ -412,7 +418,14 @@ def get_image_file(filename: str):
     file_path = os.path.join(UPLOAD_FOLDER, filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
-    return FileResponse(file_path)
+
+    # CORS 헤더를 포함한 FileResponse 반환
+    response = FileResponse(file_path)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Cache-Control"] = "public, max-age=86400"  # 24시간 캐시
+    return response
 
 
 @router.delete("/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
