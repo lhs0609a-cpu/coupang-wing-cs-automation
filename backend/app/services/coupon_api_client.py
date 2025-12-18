@@ -307,41 +307,48 @@ class CouponAPIClient:
         url = f"{self.BASE_URL}{path}"
         headers = self._get_headers("PUT", path)
 
+        # vendorItemIds는 정수 배열이어야 함
+        int_vendor_item_ids = [int(vid) for vid in vendor_item_ids]
+
         payload = {
             "couponItems": [
                 {
-                    "couponId": str(coupon_id),
+                    "couponId": int(coupon_id),  # 정수로 전송
                     "userId": effective_user_id,
-                    "vendorItemIds": vendor_item_ids
+                    "vendorItemIds": int_vendor_item_ids
                 }
             ]
         }
 
         logger.info(f"Applying download coupon {coupon_id} to {len(vendor_item_ids)} items, userId={effective_user_id}")
-        logger.debug(f"Payload: {payload}")
+        logger.info(f"Download coupon payload: {payload}")
 
         try:
             response = requests.put(url, headers=headers, json=payload, timeout=60)
 
             # 응답 로깅
             logger.info(f"Download coupon response status: {response.status_code}")
+            logger.info(f"Download coupon response body: {response.text[:500] if response.text else 'empty'}")
 
             # 에러 응답 처리
             if response.status_code == 400:
-                error_data = response.json() if response.text else {}
+                try:
+                    error_data = response.json() if response.text else {}
+                except:
+                    error_data = {"raw": response.text}
                 logger.error(f"Download coupon 400 error: {error_data}")
                 return {
                     "requestResultStatus": "FAILED",
-                    "errorMessage": error_data.get("message", f"잘못된 요청: {response.text}")
+                    "errorMessage": error_data.get("message") or error_data.get("errorMessage") or f"잘못된 요청: {response.text[:200]}"
                 }
             if response.status_code == 403:
-                logger.error(f"Download coupon 403 error: Access denied")
+                logger.error(f"Download coupon 403 error: {response.text}")
                 return {
                     "requestResultStatus": "FAILED",
                     "errorMessage": "접근 권한이 없습니다. API 키를 확인해주세요."
                 }
             if response.status_code == 404:
-                logger.error(f"Download coupon 404 error: Coupon not found")
+                logger.error(f"Download coupon 404 error: {response.text}")
                 return {
                     "requestResultStatus": "FAILED",
                     "errorMessage": f"쿠폰 ID {coupon_id}를 찾을 수 없습니다."
@@ -349,11 +356,11 @@ class CouponAPIClient:
 
             response.raise_for_status()
             result = response.json()
-            logger.info(f"Download coupon response: {result}")
+            logger.info(f"Download coupon success response: {result}")
             return result
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error applying download coupon: {str(e)}")
+            logger.error(f"Error applying download coupon: {str(e)}", exc_info=True)
             return {
                 "requestResultStatus": "FAILED",
                 "errorMessage": str(e)
