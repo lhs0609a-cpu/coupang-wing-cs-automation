@@ -193,6 +193,34 @@ async def get_instant_coupons(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/coupons/download/{account_id}")
+async def get_download_coupons(
+    account_id: int,
+    status: str = "IN_PROGRESS",
+    db: Session = Depends(get_db)
+):
+    """
+    다운로드쿠폰 목록 조회
+
+    Args:
+        account_id: 쿠팡 계정 ID
+        status: 쿠폰 상태 (READY, IN_PROGRESS, PAUSED, FINISHED)
+    """
+    try:
+        service = CouponAutoSyncService(db)
+        result = service.get_download_coupons(account_id, status)
+
+        if result["success"]:
+            return result
+        else:
+            raise HTTPException(status_code=400, detail=result["message"])
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting download coupons: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== 수동 동기화 API ====================
 
 @router.post("/sync/{account_id}/detect")

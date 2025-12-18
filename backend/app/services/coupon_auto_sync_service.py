@@ -129,6 +129,41 @@ class CouponAutoSyncService:
             logger.error(f"Error fetching instant coupons: {str(e)}")
             return {"success": False, "message": str(e)}
 
+    def get_download_coupons(self, coupang_account_id: int, status: str = "IN_PROGRESS") -> Dict[str, Any]:
+        """다운로드쿠폰 목록 조회"""
+        account = self.db.query(CoupangAccount).filter(
+            CoupangAccount.id == coupang_account_id
+        ).first()
+
+        if not account:
+            return {"success": False, "message": "계정을 찾을 수 없습니다."}
+
+        client = self._get_api_client(account)
+
+        try:
+            result = client.get_download_coupons(status=status)
+            # 다운로드 쿠폰 API 응답 구조 처리
+            if result.get("code") == "SUCCESS" or "content" in result:
+                coupons = result.get("content", [])
+                # 쿠폰 데이터 정규화
+                normalized_coupons = []
+                for coupon in coupons:
+                    normalized_coupons.append({
+                        "couponId": coupon.get("couponId"),
+                        "couponName": coupon.get("couponName") or coupon.get("title"),
+                        "discountType": coupon.get("discountType"),
+                        "discountValue": coupon.get("discountValue"),
+                        "status": coupon.get("status"),
+                        "startDate": coupon.get("startDate"),
+                        "endDate": coupon.get("endDate"),
+                    })
+                return {"success": True, "coupons": normalized_coupons}
+            else:
+                return {"success": False, "message": result.get("message", "조회 실패")}
+        except Exception as e:
+            logger.error(f"Error fetching download coupons: {str(e)}")
+            return {"success": False, "message": str(e)}
+
     # ==================== 신규 상품 감지 ====================
 
     def detect_new_products(self, coupang_account_id: int, target_date: str = None) -> Dict[str, Any]:

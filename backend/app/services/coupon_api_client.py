@@ -203,6 +203,38 @@ class CouponAPIClient:
 
     # ==================== 다운로드쿠폰 API ====================
 
+    def get_download_coupons(
+        self,
+        status: str = "IN_PROGRESS",
+        page: int = 0,
+        size: int = 100
+    ) -> Dict[str, Any]:
+        """
+        다운로드쿠폰 목록 조회
+
+        Args:
+            status: 쿠폰 상태 (READY, IN_PROGRESS, PAUSED, FINISHED)
+            page: 페이지 번호 (0부터 시작)
+            size: 페이지당 건수
+
+        Returns:
+            쿠폰 목록
+        """
+        path = f"/v2/providers/marketplace_openapi/apis/api/v1/coupons"
+        query = f"status={status}&page={page}&size={size}"
+        url = f"{self.BASE_URL}{path}?{query}"
+        headers = self._get_headers("GET", path, query)
+
+        logger.info(f"Fetching download coupons: status={status}")
+
+        try:
+            response = requests.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error fetching download coupons: {str(e)}")
+            raise
+
     def get_download_coupon(self, coupon_id: int) -> Dict[str, Any]:
         """
         다운로드쿠폰 단건 조회

@@ -34,6 +34,7 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
   const [selectedAccount, setSelectedAccount] = useState(null)
   const [config, setConfig] = useState(null)
   const [instantCoupons, setInstantCoupons] = useState([])
+  const [downloadCoupons, setDownloadCoupons] = useState([])
   const [trackingList, setTrackingList] = useState([])
   const [applyLogs, setApplyLogs] = useState([])
   const [statistics, setStatistics] = useState(null)
@@ -48,7 +49,7 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
   const [couponForm, setCouponForm] = useState({
     // 기본 설정
     is_enabled: false,
-    apply_delay_days: 1,
+    apply_delay_days: 0,  // 항상 즉시 적용
 
     // 즉시할인쿠폰 설정
     instant_coupon_enabled: false,
@@ -83,8 +84,9 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
       loadConfig()
       loadStatistics()
       loadBulkApplyProgress()
-      // 계정 선택하면 즉시할인쿠폰 목록도 자동으로 로드
+      // 계정 선택하면 쿠폰 목록도 자동으로 로드
       loadInstantCoupons('APPLIED')
+      loadDownloadCoupons('IN_PROGRESS')
     }
   }, [selectedAccount])
 
@@ -119,7 +121,7 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
     if (config) {
       setCouponForm({
         is_enabled: config.is_enabled || false,
-        apply_delay_days: config.apply_delay_days || 1,
+        apply_delay_days: 0,  // 항상 즉시 적용
         instant_coupon_enabled: config.instant_coupon_enabled || false,
         instant_coupon_id: config.instant_coupon_id || '',
         instant_coupon_name: config.instant_coupon_name || '',
@@ -185,6 +187,18 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
       }
     } catch (error) {
       console.error('Failed to load instant coupons:', error)
+    }
+  }
+
+  const loadDownloadCoupons = async (status = 'IN_PROGRESS') => {
+    if (!selectedAccount) return
+    try {
+      const response = await axios.get(`${apiBaseUrl}/promotion/coupons/download/${selectedAccount}?status=${status}`)
+      if (response.data.success) {
+        setDownloadCoupons(response.data.coupons || [])
+      }
+    } catch (error) {
+      console.error('Failed to load download coupons:', error)
     }
   }
 
@@ -765,6 +779,37 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
                     }))}
                   />
                 </div>
+
+                <div className="coupon-select-wrapper">
+                  <label>또는 기존 쿠폰에서 선택</label>
+                  <div className="select-with-button">
+                    <select
+                      value={couponForm.download_coupon_id}
+                      onChange={(e) => {
+                        const coupon = downloadCoupons.find(c => c.couponId === parseInt(e.target.value))
+                        setCouponForm(prev => ({
+                          ...prev,
+                          download_coupon_id: e.target.value,
+                          download_coupon_name: coupon?.couponName || prev.download_coupon_name
+                        }))
+                      }}
+                    >
+                      <option value="">쿠폰 선택</option>
+                      {downloadCoupons.map(coupon => (
+                        <option key={coupon.couponId} value={coupon.couponId}>
+                          [{coupon.couponId}] {coupon.couponName}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="load-coupons-btn"
+                      onClick={() => loadDownloadCoupons('IN_PROGRESS')}
+                    >
+                      <RefreshCw size={14} />
+                      불러오기
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -779,26 +824,6 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
         </div>
 
         <div className="apply-options">
-          <div className="option-row">
-            <label>신규 상품 적용 대기일</label>
-            <div className="option-input">
-              <select
-                value={couponForm.apply_delay_days}
-                onChange={(e) => setCouponForm(prev => ({
-                  ...prev,
-                  apply_delay_days: parseInt(e.target.value)
-                }))}
-              >
-                <option value={0}>즉시 적용</option>
-                <option value={1}>1일 후</option>
-                <option value={2}>2일 후</option>
-                <option value={3}>3일 후</option>
-                <option value={7}>7일 후</option>
-              </select>
-              <p className="help-text">새로 등록되는 상품에 쿠폰이 적용되기까지 대기 시간</p>
-            </div>
-          </div>
-
           <div className="option-row checkbox-row">
             <label className="checkbox-label">
               <input
