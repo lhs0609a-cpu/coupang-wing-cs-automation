@@ -209,16 +209,14 @@ async def get_download_coupons(
     try:
         service = CouponAutoSyncService(db)
         result = service.get_download_coupons(account_id, status)
-
-        if result["success"]:
-            return result
-        else:
-            raise HTTPException(status_code=400, detail=result["message"])
-    except HTTPException:
-        raise
+        # 항상 성공 응답 반환 (API 미지원 시에도 빈 배열)
+        if result is None:
+            return {"success": False, "message": "결과가 없습니다", "coupons": []}
+        return result
     except Exception as e:
-        logger.error(f"Error getting download coupons: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting download coupons: {str(e)}", exc_info=True)
+        # 에러 시에도 빈 배열로 응답 (절대 400 에러 발생 안함)
+        return {"success": False, "message": f"다운로드 쿠폰 조회 실패: {str(e)}", "coupons": []}
 
 
 # ==================== 수동 동기화 API ====================

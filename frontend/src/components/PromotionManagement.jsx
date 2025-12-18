@@ -196,9 +196,14 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
       const response = await axios.get(`${apiBaseUrl}/promotion/coupons/download/${selectedAccount}?status=${status}`)
       if (response.data.success) {
         setDownloadCoupons(response.data.coupons || [])
+      } else {
+        // API 미지원 등의 이유로 실패해도 빈 배열 설정
+        setDownloadCoupons([])
       }
     } catch (error) {
       console.error('Failed to load download coupons:', error)
+      // 에러 발생 시 빈 배열로 설정 (UI 깨짐 방지)
+      setDownloadCoupons([])
     }
   }
 
@@ -809,6 +814,7 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
                       불러오기
                     </button>
                   </div>
+                  <p className="help-text warning">* 쿠팡 API 제한으로 목록 조회가 불가할 수 있습니다</p>
                 </div>
               </div>
             )}

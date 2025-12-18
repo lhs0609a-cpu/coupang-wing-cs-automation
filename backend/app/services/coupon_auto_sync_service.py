@@ -136,7 +136,7 @@ class CouponAutoSyncService:
         ).first()
 
         if not account:
-            return {"success": False, "message": "계정을 찾을 수 없습니다."}
+            return {"success": False, "message": "계정을 찾을 수 없습니다.", "coupons": []}
 
         client = self._get_api_client(account)
 
@@ -159,10 +159,11 @@ class CouponAutoSyncService:
                     })
                 return {"success": True, "coupons": normalized_coupons}
             else:
-                return {"success": False, "message": result.get("message", "조회 실패")}
+                return {"success": False, "message": result.get("message", "조회 실패"), "coupons": []}
         except Exception as e:
             logger.error(f"Error fetching download coupons: {str(e)}")
-            return {"success": False, "message": str(e)}
+            # API가 지원되지 않는 경우 빈 배열 반환 (410 Gone 등)
+            return {"success": False, "message": "다운로드 쿠폰 목록 조회 API가 지원되지 않습니다. 쿠폰 ID를 직접 입력해주세요.", "coupons": []}
 
     # ==================== 신규 상품 감지 ====================
 
