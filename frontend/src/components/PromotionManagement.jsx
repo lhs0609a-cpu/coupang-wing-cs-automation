@@ -244,6 +244,34 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
     }
   }
 
+  // 쿠폰 일괄 적용 재시작 (취소 후 새로 시작)
+  const restartBulkApply = async (skipApplied = true) => {
+    if (!selectedAccount) return
+
+    const confirmMsg = skipApplied
+      ? '기존 작업을 취소하고 새로 시작하시겠습니까?\n(이미 적용된 상품은 제외됩니다)'
+      : '기존 작업을 취소하고 전체 상품에 새로 적용하시겠습니까?'
+
+    if (!window.confirm(confirmMsg)) {
+      return
+    }
+
+    try {
+      const response = await axios.post(`${apiBaseUrl}/promotion/sync/${selectedAccount}/restart`, {
+        skip_applied: skipApplied
+      })
+      if (response.data.success) {
+        showNotification(response.data.message, 'success')
+        setBulkApplyInProgress(true)
+        // 진행 상황 폴링 시작
+        setTimeout(() => loadBulkApplyProgress(), 2000)
+      }
+    } catch (error) {
+      console.error('Failed to restart bulk apply:', error)
+      showNotification('재시작에 실패했습니다', 'error')
+    }
+  }
+
   // 쿠폰 설정 저장 및 전체 적용
   const saveAndApplyConfig = async () => {
     if (!selectedAccount) return
@@ -454,9 +482,10 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
           {completed_at && <span>완료: {new Date(completed_at).toLocaleString()}</span>}
         </div>
 
-        {/* 취소 버튼 - 진행 중이거나 멈춘 작업에만 표시 */}
-        {(isInProgress || (status !== 'completed' && status !== 'failed' && status !== 'cancelled')) && (
-          <div className="progress-actions">
+        {/* 액션 버튼들 */}
+        <div className="progress-actions">
+          {/* 진행 중일 때: 취소 버튼만 */}
+          {isInProgress && (
             <button
               className="cancel-button"
               onClick={cancelBulkApply}
@@ -464,8 +493,28 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
               <StopCircle size={16} />
               <span>작업 취소</span>
             </button>
-          </div>
-        )}
+          )}
+
+          {/* 완료/취소/실패 상태일 때: 재시작 버튼들 */}
+          {(isCompleted || isFailed || status === 'cancelled') && (
+            <>
+              <button
+                className="restart-button"
+                onClick={() => restartBulkApply(true)}
+              >
+                <RefreshCw size={16} />
+                <span>신규 상품만 적용</span>
+              </button>
+              <button
+                className="restart-button full"
+                onClick={() => restartBulkApply(false)}
+              >
+                <Zap size={16} />
+                <span>전체 재적용</span>
+              </button>
+            </>
+          )}
+        </div>
       </motion.div>
     )
   }

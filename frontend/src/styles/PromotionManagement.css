@@ -1360,6 +1360,7 @@
 .progress-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 12px;
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--border-color);
@@ -1387,4 +1388,36 @@
 
 .cancel-button:active {
   transform: translateY(0);
+}
+
+.restart-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.restart-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.restart-button:active {
+  transform: translateY(0);
+}
+
+.restart-button.full {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+}
+
+.restart-button.full:hover {
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
 }

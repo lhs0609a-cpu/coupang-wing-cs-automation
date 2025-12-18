@@ -45,6 +45,7 @@ class ManualSyncRequest(BaseModel):
 class BulkApplyRequest(BaseModel):
     """전체 상품 일괄 적용 요청"""
     days_back: Optional[int] = 30  # 며칠 전까지 조회할지 (기본 30일)
+    skip_applied: Optional[bool] = True  # 이미 적용된 상품 건너뛰기 (기본: True)
 
 
 # ==================== 설정 관리 API ====================
@@ -340,29 +341,77 @@ async def bulk_apply_coupons(
 
     Args:
         account_id: 쿠팡 계정 ID
-        request: 일괄 적용 설정 (days_back: 며칠 전까지 조회할지)
+        request: 일괄 적용 설정 (days_back, skip_applied)
     """
     try:
         days_back = request.days_back or 365
+        skip_applied = request.skip_applied if request.skip_applied is not None else True
 
         # 백그라운드에서 실행
         def run_bulk_apply():
             db_session = SessionLocal()
             try:
                 sync_service = CouponAutoSyncService(db_session)
-                result = sync_service.apply_coupons_to_all_products(account_id, days_back)
+                result = sync_service.apply_coupons_to_all_products(account_id, days_back, skip_applied)
                 logger.info(f"Bulk apply result: {result}")
             finally:
                 db_session.close()
 
         background_tasks.add_task(run_bulk_apply)
 
+        skip_msg = "이미 적용된 상품 제외" if skip_applied else "전체 상품 대상"
         return {
             "success": True,
-            "message": f"최근 {days_back}일간의 전체 상품에 쿠폰 일괄 적용이 백그라운드에서 시작되었습니다."
+            "message": f"전체 상품에 쿠폰 일괄 적용이 시작되었습니다. ({skip_msg})"
         }
     except Exception as e:
         logger.error(f"Error running bulk apply: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/sync/{account_id}/restart")
+async def restart_bulk_apply(
+    account_id: int,
+    request: BulkApplyRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    쿠폰 일괄 적용 재시작 (기존 작업 취소 후 새로 시작)
+
+    Args:
+        account_id: 쿠팡 계정 ID
+        request: 일괄 적용 설정
+    """
+    try:
+        service = CouponAutoSyncService(db)
+
+        # 1. 기존 작업 취소
+        cancel_result = service.cancel_bulk_apply_progress(account_id)
+        logger.info(f"Cancel result: {cancel_result}")
+
+        days_back = request.days_back or 365
+        skip_applied = request.skip_applied if request.skip_applied is not None else True
+
+        # 2. 새 작업 시작 (백그라운드)
+        def run_bulk_apply():
+            db_session = SessionLocal()
+            try:
+                sync_service = CouponAutoSyncService(db_session)
+                result = sync_service.apply_coupons_to_all_products(account_id, days_back, skip_applied)
+                logger.info(f"Bulk apply result: {result}")
+            finally:
+                db_session.close()
+
+        background_tasks.add_task(run_bulk_apply)
+
+        skip_msg = "이미 적용된 상품 제외" if skip_applied else "전체 상품 대상"
+        return {
+            "success": True,
+            "message": f"기존 작업을 취소하고 새로 시작합니다. ({skip_msg})"
+        }
+    except Exception as e:
+        logger.error(f"Error restarting bulk apply: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

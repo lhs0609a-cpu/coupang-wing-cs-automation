@@ -649,7 +649,8 @@ class CouponAutoSyncService:
     def apply_coupons_to_all_products(
         self,
         coupang_account_id: int,
-        days_back: int = 30
+        days_back: int = 30,
+        skip_applied: bool = True
     ) -> Dict[str, Any]:
         """
         전체 상품에 쿠폰 일괄 적용 (진행 상황 추적 포함)
@@ -657,6 +658,7 @@ class CouponAutoSyncService:
         Args:
             coupang_account_id: 쿠팡 계정 ID
             days_back: 미사용 (호환성 유지용) - 전체 상품 조회로 변경됨
+            skip_applied: 이미 쿠폰이 적용된 상품 건너뛰기 (기본값: True)
 
         Returns:
             적용 결과
@@ -679,6 +681,16 @@ class CouponAutoSyncService:
         existing_progress = self.get_bulk_apply_progress(coupang_account_id)
         if existing_progress:
             return {"success": False, "message": "이미 진행 중인 작업이 있습니다."}
+
+        # 이미 쿠폰이 적용된 상품 목록 조회 (skip_applied=True일 때)
+        applied_seller_product_ids = set()
+        if skip_applied:
+            applied_trackings = self.db.query(ProductCouponTracking).filter(
+                ProductCouponTracking.coupang_account_id == coupang_account_id,
+                ProductCouponTracking.status == "completed"
+            ).all()
+            applied_seller_product_ids = {t.seller_product_id for t in applied_trackings}
+            logger.info(f"[DEBUG] Found {len(applied_seller_product_ids)} already applied products to skip")
 
         client = self._get_api_client(account)
 
@@ -708,6 +720,7 @@ class CouponAutoSyncService:
             skipped_excluded = 0
             skipped_no_vendor_items = 0
             skipped_no_seller_id = 0
+            skipped_already_applied = 0
 
             progress.current_date = "전체 상품 조회 중..."
             self.db.commit()
@@ -715,6 +728,7 @@ class CouponAutoSyncService:
             logger.info(f"[DEBUG] Starting bulk apply for account {coupang_account_id}")
             logger.info(f"[DEBUG] Config: instant_coupon_enabled={config.instant_coupon_enabled}, download_coupon_enabled={config.download_coupon_enabled}")
             logger.info(f"[DEBUG] Excluded product IDs: {config.excluded_product_ids}")
+            logger.info(f"[DEBUG] Skip already applied: {skip_applied}, Applied products count: {len(applied_seller_product_ids)}")
 
             # 전체 상품 조회
             all_products = client.get_all_approved_products()
@@ -731,6 +745,11 @@ class CouponAutoSyncService:
                 # 제외 상품 체크
                 if seller_product_id in (config.excluded_product_ids or []):
                     skipped_excluded += 1
+                    continue
+
+                # 이미 적용된 상품 체크
+                if skip_applied and seller_product_id in applied_seller_product_ids:
+                    skipped_already_applied += 1
                     continue
 
                 # vendorItemId 조회
@@ -764,6 +783,7 @@ class CouponAutoSyncService:
             logger.info(f"[DEBUG] Total vendorItemIds collected: {len(all_vendor_item_ids)}")
             logger.info(f"[DEBUG] Skipped - no seller ID: {skipped_no_seller_id}")
             logger.info(f"[DEBUG] Skipped - excluded: {skipped_excluded}")
+            logger.info(f"[DEBUG] Skipped - already applied: {skipped_already_applied}")
             logger.info(f"[DEBUG] Skipped - no vendorItemIds: {skipped_no_vendor_items}")
 
             # 수집 완료
