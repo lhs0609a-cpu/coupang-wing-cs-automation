@@ -530,6 +530,25 @@
   box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
 }
 
+/* 네이버 판매처 스타일 */
+.price-item.naver-item {
+  border-color: #03c75a;
+  background: rgba(3, 199, 90, 0.05);
+}
+
+.naver-badge {
+  position: absolute;
+  top: -8px;
+  left: 16px;
+  padding: 4px 12px;
+  background: linear-gradient(135deg, #03c75a 0%, #00b33c 100%);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 20px;
+  box-shadow: 0 4px 8px rgba(3, 199, 90, 0.3);
+}
+
 .price-item-image {
   width: 80px;
   height: 80px;

@@ -348,6 +348,28 @@ const ProductSearch = ({ showNotification }) => {
     }
   }
 
+  // 네이버 판매처 우선 정렬 함수
+  const sortWithNaverFirst = (items) => {
+    if (!items || items.length === 0) return items
+
+    // 네이버 관련 판매처 키워드
+    const naverKeywords = ['네이버', 'naver', '스마트스토어', 'smartstore']
+
+    // 판매처가 네이버인지 확인
+    const isNaverMall = (mallName) => {
+      if (!mallName) return false
+      const lowerName = mallName.toLowerCase()
+      return naverKeywords.some(keyword => lowerName.includes(keyword.toLowerCase()))
+    }
+
+    // 네이버 판매처와 기타 판매처 분리
+    const naverItems = items.filter(item => isNaverMall(item.mallName))
+    const otherItems = items.filter(item => !isNaverMall(item.mallName))
+
+    // 각각 가격순으로 정렬 유지 후 네이버를 앞에 배치
+    return [...naverItems, ...otherItems]
+  }
+
   return (
     <div className="product-search">
       <div className="product-search-header">
@@ -566,16 +588,26 @@ const ProductSearch = ({ showNotification }) => {
               </div>
 
               <div className="price-compare-list">
-                {priceCompareResults.items.map((item, index) => (
+                {sortWithNaverFirst(priceCompareResults.items).map((item, index) => {
+                  // 네이버 판매처 확인
+                  const naverKeywords = ['네이버', 'naver', '스마트스토어', 'smartstore']
+                  const isNaver = item.mallName && naverKeywords.some(k =>
+                    item.mallName.toLowerCase().includes(k.toLowerCase())
+                  )
+
+                  return (
                   <motion.div
                     key={item.productId + index}
-                    className={`price-item ${index === 0 ? 'best-price' : ''}`}
+                    className={`price-item ${index === 0 ? 'best-price' : ''} ${isNaver ? 'naver-item' : ''}`}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.03 }}
                   >
                     {index === 0 && (
                       <div className="best-badge">최저가</div>
+                    )}
+                    {isNaver && index !== 0 && (
+                      <div className="naver-badge">네이버</div>
                     )}
                     <div className="price-item-image">
                       {item.image ? (
@@ -615,7 +647,8 @@ const ProductSearch = ({ showNotification }) => {
                       <span>구매하기</span>
                     </button>
                   </motion.div>
-                ))}
+                  )
+                })}
 
                 {priceCompareResults.items.length === 0 && (
                   <div className="no-price-results">
