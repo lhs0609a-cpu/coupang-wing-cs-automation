@@ -480,26 +480,45 @@ class CouponAPIClient:
         """
         all_products = []
         next_token = None
+        page_count = 0
+        max_pages = 100  # 안전장치: 최대 100페이지 (10,000개)
 
-        while True:
-            result = self.get_all_products(
-                status="APPROVED",
-                max_per_page=100,
-                next_token=next_token
-            )
+        logger.info(f"[DEBUG] Starting to fetch all approved products for vendor {self.vendor_id}")
 
-            if result.get("code") == "SUCCESS":
-                products = result.get("data", [])
-                all_products.extend(products)
+        while page_count < max_pages:
+            page_count += 1
+            logger.info(f"[DEBUG] Fetching page {page_count}, next_token={next_token}")
 
-                next_token_str = result.get("nextToken", "")
-                if next_token_str and next_token_str.strip():
-                    next_token = int(next_token_str)
+            try:
+                result = self.get_all_products(
+                    status="APPROVED",
+                    max_per_page=100,
+                    next_token=next_token
+                )
+
+                logger.info(f"[DEBUG] Page {page_count} response code: {result.get('code')}")
+
+                if result.get("code") == "SUCCESS":
+                    products = result.get("data", [])
+                    logger.info(f"[DEBUG] Page {page_count}: received {len(products)} products")
+                    all_products.extend(products)
+
+                    next_token_str = result.get("nextToken", "")
+                    logger.info(f"[DEBUG] Page {page_count}: nextToken = '{next_token_str}'")
+
+                    if next_token_str and next_token_str.strip():
+                        next_token = int(next_token_str)
+                    else:
+                        logger.info(f"[DEBUG] No more pages, stopping pagination")
+                        break
                 else:
+                    logger.error(f"[DEBUG] Failed to fetch products on page {page_count}: code={result.get('code')}, message={result.get('message')}")
+                    logger.error(f"[DEBUG] Full response: {result}")
                     break
-            else:
-                logger.error(f"Failed to fetch products: {result.get('message')}")
+
+            except Exception as e:
+                logger.error(f"[DEBUG] Exception on page {page_count}: {str(e)}")
                 break
 
-        logger.info(f"Total approved products fetched: {len(all_products)}")
+        logger.info(f"[DEBUG] Total approved products fetched: {len(all_products)} from {page_count} pages")
         return all_products

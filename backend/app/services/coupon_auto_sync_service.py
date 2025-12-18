@@ -658,35 +658,66 @@ class CouponAutoSyncService:
         try:
             # 전체 승인 상품 조회 (날짜 필터 없이)
             all_vendor_item_ids = []
+            skipped_excluded = 0
+            skipped_no_vendor_items = 0
+            skipped_no_seller_id = 0
 
             progress.current_date = "전체 상품 조회 중..."
             self.db.commit()
 
+            logger.info(f"[DEBUG] Starting bulk apply for account {coupang_account_id}")
+            logger.info(f"[DEBUG] Config: instant_coupon_enabled={config.instant_coupon_enabled}, download_coupon_enabled={config.download_coupon_enabled}")
+            logger.info(f"[DEBUG] Excluded product IDs: {config.excluded_product_ids}")
+
             # 전체 상품 조회
             all_products = client.get_all_approved_products()
 
-            logger.info(f"Found {len(all_products)} approved products")
+            logger.info(f"[DEBUG] API returned {len(all_products)} approved products")
 
             # 각 상품에서 vendorItemId 추출
             for idx, product in enumerate(all_products):
                 seller_product_id = product.get("sellerProductId")
-                if seller_product_id:
-                    # 제외 상품 체크
-                    if seller_product_id in (config.excluded_product_ids or []):
-                        continue
+                if not seller_product_id:
+                    skipped_no_seller_id += 1
+                    continue
 
-                    # vendorItemId 조회
+                # 제외 상품 체크
+                if seller_product_id in (config.excluded_product_ids or []):
+                    skipped_excluded += 1
+                    continue
+
+                # vendorItemId 조회
+                try:
                     vendor_item_ids = client.get_vendor_item_ids(seller_product_id)
                     if vendor_item_ids:
                         all_vendor_item_ids.extend(vendor_item_ids)
                         results["total_products"] += 1
+                    else:
+                        skipped_no_vendor_items += 1
+                        if skipped_no_vendor_items <= 10:  # 처음 10개만 로깅
+                            logger.warning(f"[DEBUG] No vendorItemIds found for product {seller_product_id}")
+                except Exception as e:
+                    skipped_no_vendor_items += 1
+                    logger.error(f"[DEBUG] Error getting vendorItemIds for product {seller_product_id}: {str(e)}")
 
-                        # 진행 상황 업데이트 (10개마다)
-                        if idx % 10 == 0:
-                            progress.total_products = results["total_products"]
-                            progress.total_items = len(all_vendor_item_ids)
-                            progress.current_date = f"{idx + 1}/{len(all_products)} 상품 처리 중"
-                            self.db.commit()
+                # 진행 상황 업데이트 (10개마다)
+                if idx % 10 == 0:
+                    progress.total_products = results["total_products"]
+                    progress.total_items = len(all_vendor_item_ids)
+                    progress.current_date = f"{idx + 1}/{len(all_products)} 상품 처리 중"
+                    self.db.commit()
+
+                # 100개마다 디버그 로그
+                if (idx + 1) % 100 == 0:
+                    logger.info(f"[DEBUG] Progress: {idx + 1}/{len(all_products)} processed, {results['total_products']} valid products, {len(all_vendor_item_ids)} vendor items")
+
+            logger.info(f"[DEBUG] === Product Collection Summary ===")
+            logger.info(f"[DEBUG] Total products from API: {len(all_products)}")
+            logger.info(f"[DEBUG] Valid products with vendorItemIds: {results['total_products']}")
+            logger.info(f"[DEBUG] Total vendorItemIds collected: {len(all_vendor_item_ids)}")
+            logger.info(f"[DEBUG] Skipped - no seller ID: {skipped_no_seller_id}")
+            logger.info(f"[DEBUG] Skipped - excluded: {skipped_excluded}")
+            logger.info(f"[DEBUG] Skipped - no vendorItemIds: {skipped_no_vendor_items}")
 
             # 수집 완료
             progress.processed_days = 1
