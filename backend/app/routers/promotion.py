@@ -30,6 +30,18 @@ class CouponConfigRequest(BaseModel):
     contract_id: Optional[int] = None
     excluded_categories: Optional[List[int]] = None
     excluded_product_ids: Optional[List[int]] = None
+    # 즉시할인쿠폰 자동 생성 모드 설정
+    instant_coupon_auto_create: Optional[bool] = True
+    instant_coupon_title_template: Optional[str] = None
+    instant_coupon_duration_days: Optional[int] = 30
+    instant_coupon_discount: Optional[int] = None
+    instant_coupon_discount_type: Optional[str] = "RATE"  # RATE, PRICE, FIXED_WITH_QUANTITY
+    instant_coupon_max_discount_price: Optional[int] = 10000
+    # 다운로드쿠폰 자동 생성 모드 설정
+    download_coupon_auto_create: Optional[bool] = True
+    download_coupon_title_template: Optional[str] = None
+    download_coupon_duration_days: Optional[int] = 30
+    download_coupon_policies: Optional[List[dict]] = None
 
 
 class ToggleRequest(BaseModel):

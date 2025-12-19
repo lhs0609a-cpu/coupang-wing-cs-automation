@@ -199,7 +199,18 @@ class CouponAutoSyncService:
                 "maxDiscountPrice": coupon_data.get("maxDiscountPrice"),
                 "minOrderPrice": coupon_data.get("minOrderPrice"),
                 "couponCount": coupon_data.get("couponCount"),
+                # 정책 정보 (API에서 제공하는 경우)
+                "policies": coupon_data.get("policies", []),
             }
+
+            # 정책 정보가 없고 할인 정보가 있으면 기본 정책 생성
+            if not coupon["policies"] and coupon["discountType"]:
+                coupon["policies"] = [{
+                    "discountType": coupon["discountType"],
+                    "discountValue": coupon["discountValue"],
+                    "maximumDiscountPrice": coupon["maxDiscountPrice"] or 0,
+                    "minimumPurchasePrice": coupon["minOrderPrice"] or 0,
+                }]
 
             logger.info(f"Download coupon {coupon_id} fetched successfully: {coupon}")
             return {"success": True, "coupon": coupon}
@@ -930,50 +941,61 @@ class CouponAutoSyncService:
         logger.info(f"[DEBUG] Applying coupons to batch of {len(vendor_item_ids)} items")
 
         # 즉시할인쿠폰 적용
-        if config.instant_coupon_enabled and config.instant_coupon_id and config.instant_coupon_id > 0:
-            logger.info(f"[DEBUG] Applying instant coupon {config.instant_coupon_id} to {len(vendor_item_ids)} items")
-            for i in range(0, len(vendor_item_ids), instant_batch_size):
-                batch = vendor_item_ids[i:i+instant_batch_size]
-                try:
-                    logger.info(f"[DEBUG] Calling apply_instant_coupon_to_items with coupon_id={config.instant_coupon_id}, batch_size={len(batch)}")
-                    result = client.apply_instant_coupon_to_items(
-                        coupon_id=config.instant_coupon_id,
-                        vendor_item_ids=batch
-                    )
-                    logger.info(f"[DEBUG] Instant coupon API response: {result}")
+        if config.instant_coupon_enabled:
+            # 자동 생성 모드 확인 (기본: True)
+            auto_create = getattr(config, 'instant_coupon_auto_create', True)
 
-                    if result.get("code") == 200 and result.get("data", {}).get("success"):
-                        requested_id = result.get("data", {}).get("content", {}).get("requestedId")
-                        logger.info(f"[DEBUG] Instant coupon request submitted, requestedId={requested_id}")
+            if auto_create and config.contract_id and config.instant_coupon_discount:
+                # 새 쿠폰 생성 모드: 1만개 상품마다 새 쿠폰 생성
+                self._apply_instant_coupon_with_auto_create(
+                    client, config, progress, results,
+                    vendor_item_ids, instant_batch_size
+                )
+            elif config.instant_coupon_id and config.instant_coupon_id > 0:
+                # 기존 방식: 기존 쿠폰에 추가
+                logger.info(f"[DEBUG] Applying instant coupon {config.instant_coupon_id} to {len(vendor_item_ids)} items")
+                for i in range(0, len(vendor_item_ids), instant_batch_size):
+                    batch = vendor_item_ids[i:i+instant_batch_size]
+                    try:
+                        logger.info(f"[DEBUG] Calling apply_instant_coupon_to_items with coupon_id={config.instant_coupon_id}, batch_size={len(batch)}")
+                        result = client.apply_instant_coupon_to_items(
+                            coupon_id=config.instant_coupon_id,
+                            vendor_item_ids=batch
+                        )
+                        logger.info(f"[DEBUG] Instant coupon API response: {result}")
 
-                        # 비동기 처리 결과 확인 (최대 5회)
-                        for check_num in range(5):
-                            time.sleep(2)
-                            status_result = client.get_instant_coupon_request_status(requested_id)
-                            status = status_result.get("data", {}).get("content", {}).get("status")
-                            logger.info(f"[DEBUG] Status check {check_num+1}: {status}")
+                        if result.get("code") == 200 and result.get("data", {}).get("success"):
+                            requested_id = result.get("data", {}).get("content", {}).get("requestedId")
+                            logger.info(f"[DEBUG] Instant coupon request submitted, requestedId={requested_id}")
 
-                            if status == "DONE":
+                            # 비동기 처리 결과 확인 (최대 5회)
+                            for check_num in range(5):
+                                time.sleep(2)
+                                status_result = client.get_instant_coupon_request_status(requested_id)
+                                status = status_result.get("data", {}).get("content", {}).get("status")
+                                logger.info(f"[DEBUG] Status check {check_num+1}: {status}")
+
+                                if status == "DONE":
+                                    results["instant_success"] += len(batch)
+                                    logger.info(f"[DEBUG] Batch completed successfully: {len(batch)} items")
+                                    break
+                                elif status == "FAIL":
+                                    failed_items = status_result.get("data", {}).get("content", {}).get("failedVendorItems", [])
+                                    results["instant_failed"] += len(failed_items)
+                                    results["instant_success"] += len(batch) - len(failed_items)
+                                    logger.warning(f"[DEBUG] Batch failed: {len(failed_items)} items failed, {len(batch) - len(failed_items)} succeeded")
+                                    break
+                            else:
+                                # 타임아웃 - 성공으로 간주 (백그라운드에서 처리됨)
                                 results["instant_success"] += len(batch)
-                                logger.info(f"[DEBUG] Batch completed successfully: {len(batch)} items")
-                                break
-                            elif status == "FAIL":
-                                failed_items = status_result.get("data", {}).get("content", {}).get("failedVendorItems", [])
-                                results["instant_failed"] += len(failed_items)
-                                results["instant_success"] += len(batch) - len(failed_items)
-                                logger.warning(f"[DEBUG] Batch failed: {len(failed_items)} items failed, {len(batch) - len(failed_items)} succeeded")
-                                break
+                                logger.info(f"[DEBUG] Status check timeout, assuming success: {len(batch)} items")
                         else:
-                            # 타임아웃 - 성공으로 간주 (백그라운드에서 처리됨)
-                            results["instant_success"] += len(batch)
-                            logger.info(f"[DEBUG] Status check timeout, assuming success: {len(batch)} items")
-                    else:
-                        results["instant_failed"] += len(batch)
-                        logger.error(f"[DEBUG] Instant coupon API failed - code: {result.get('code')}, message: {result.get('message')}, full response: {result}")
+                            results["instant_failed"] += len(batch)
+                            logger.error(f"[DEBUG] Instant coupon API failed - code: {result.get('code')}, message: {result.get('message')}, full response: {result}")
 
-                except Exception as e:
-                    results["instant_failed"] += len(batch)
-                    logger.error(f"[DEBUG] Instant coupon exception: {str(e)}", exc_info=True)
+                    except Exception as e:
+                        results["instant_failed"] += len(batch)
+                        logger.error(f"[DEBUG] Instant coupon exception: {str(e)}", exc_info=True)
 
             # 진행 상황 업데이트
             progress.instant_total = (progress.instant_total or 0) + len(vendor_item_ids)
@@ -982,25 +1004,36 @@ class CouponAutoSyncService:
             self.db.commit()
 
         # 다운로드쿠폰 적용
-        if config.download_coupon_enabled and config.download_coupon_id and config.download_coupon_id > 0:
-            for i in range(0, len(vendor_item_ids), download_batch_size):
-                batch = vendor_item_ids[i:i+download_batch_size]
-                try:
-                    result = client.apply_download_coupon_to_items(
-                        coupon_id=config.download_coupon_id,
-                        vendor_item_ids=batch,
-                        user_id=wing_username
-                    )
+        if config.download_coupon_enabled:
+            # 자동 생성 모드 확인 (기본: True)
+            auto_create = getattr(config, 'download_coupon_auto_create', True)
 
-                    if result.get("requestResultStatus") == "SUCCESS":
-                        results["download_success"] += len(batch)
-                    else:
+            if auto_create and config.contract_id:
+                # 새 쿠폰 생성 모드: 100개 상품마다 새 쿠폰 생성
+                self._apply_download_coupon_with_auto_create(
+                    client, config, progress, results,
+                    vendor_item_ids, wing_username, download_batch_size
+                )
+            elif config.download_coupon_id and config.download_coupon_id > 0:
+                # 기존 방식: 기존 쿠폰에 추가 시도 (대부분 실패함)
+                for i in range(0, len(vendor_item_ids), download_batch_size):
+                    batch = vendor_item_ids[i:i+download_batch_size]
+                    try:
+                        result = client.apply_download_coupon_to_items(
+                            coupon_id=config.download_coupon_id,
+                            vendor_item_ids=batch,
+                            user_id=wing_username
+                        )
+
+                        if result.get("requestResultStatus") == "SUCCESS":
+                            results["download_success"] += len(batch)
+                        else:
+                            results["download_failed"] += len(batch)
+                            logger.error(f"[DEBUG] Download coupon error: {result.get('errorMessage')}")
+
+                    except Exception as e:
                         results["download_failed"] += len(batch)
-                        logger.error(f"[DEBUG] Download coupon error: {result.get('errorMessage')}")
-
-                except Exception as e:
-                    results["download_failed"] += len(batch)
-                    logger.error(f"[DEBUG] Download coupon exception: {str(e)}")
+                        logger.error(f"[DEBUG] Download coupon exception: {str(e)}")
 
             # 진행 상황 업데이트
             progress.download_total = (progress.download_total or 0) + len(vendor_item_ids)
@@ -1009,6 +1042,178 @@ class CouponAutoSyncService:
             self.db.commit()
 
         logger.info(f"[DEBUG] Batch complete - Instant: {results['instant_success']}/{progress.instant_total or 0}, Download: {results['download_success']}/{progress.download_total or 0}")
+
+    def _apply_download_coupon_with_auto_create(
+        self,
+        client: CouponAPIClient,
+        config: CouponAutoSyncConfig,
+        progress: BulkApplyProgress,
+        results: Dict[str, Any],
+        vendor_item_ids: List[int],
+        wing_username: str,
+        batch_size: int = 100
+    ):
+        """
+        다운로드쿠폰 자동 생성 모드: 100개 상품마다 새 쿠폰 생성
+
+        Args:
+            client: 쿠팡 API 클라이언트
+            config: 쿠폰 설정
+            progress: 진행 상황
+            results: 결과 딕셔너리
+            vendor_item_ids: 적용할 상품 옵션 ID 목록
+            wing_username: WING 로그인 ID
+            batch_size: 배치 크기 (기본 100)
+        """
+        from datetime import datetime, timedelta
+
+        # 쿠폰 정책 가져오기 (설정에서 또는 기존 쿠폰에서)
+        policies = config.download_coupon_policies
+        if not policies and config.download_coupon_id:
+            # 기존 쿠폰에서 정책 복사
+            try:
+                existing_coupon = client.get_download_coupon(config.download_coupon_id)
+                if existing_coupon and "couponPolicies" in existing_coupon:
+                    policies = existing_coupon.get("couponPolicies", [])
+                    logger.info(f"[AUTO-CREATE] Copied policies from existing coupon {config.download_coupon_id}")
+            except Exception as e:
+                logger.error(f"[AUTO-CREATE] Failed to get existing coupon policies: {e}")
+
+        if not policies:
+            logger.error("[AUTO-CREATE] No coupon policies configured. Cannot create coupons.")
+            results["download_failed"] += len(vendor_item_ids)
+            return
+
+        # 쿠폰 제목 템플릿
+        title_template = config.download_coupon_title_template or config.download_coupon_name or "자동생성 할인쿠폰"
+        duration_days = config.download_coupon_duration_days or 30
+
+        # 배치별로 새 쿠폰 생성
+        batch_count = 0
+        for i in range(0, len(vendor_item_ids), batch_size):
+            batch = vendor_item_ids[i:i+batch_size]
+            batch_count += 1
+
+            try:
+                # 쿠폰 기간 설정 (1시간 후부터 시작)
+                now = datetime.now()
+                start_date = (now + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+                end_date = (now + timedelta(days=duration_days)).strftime("%Y-%m-%d %H:%M:%S")
+
+                # 쿠폰 제목 (배치 번호 포함)
+                coupon_title = f"{title_template} #{batch_count}"
+
+                logger.info(f"[AUTO-CREATE] Creating coupon '{coupon_title}' for {len(batch)} items")
+
+                # 쿠폰 생성 + 상품 적용
+                result = client.create_download_coupon_with_items(
+                    title=coupon_title,
+                    contract_id=config.contract_id,
+                    start_date=start_date,
+                    end_date=end_date,
+                    policies=policies,
+                    vendor_item_ids=batch,
+                    user_id=wing_username
+                )
+
+                if result.get("success"):
+                    results["download_success"] += len(batch)
+                    logger.info(f"[AUTO-CREATE] Coupon {result.get('couponId')} created successfully with {len(batch)} items")
+                else:
+                    results["download_failed"] += len(batch)
+                    error_msg = result.get("errorMessage") or result.get("applyResult", {}).get("errorMessage", "Unknown error")
+                    logger.error(f"[AUTO-CREATE] Failed to create coupon: {error_msg}")
+
+            except Exception as e:
+                results["download_failed"] += len(batch)
+                logger.error(f"[AUTO-CREATE] Exception creating coupon: {str(e)}", exc_info=True)
+
+        logger.info(f"[AUTO-CREATE] Completed: {batch_count} coupons created, success={results['download_success']}, failed={results['download_failed']}")
+
+    def _apply_instant_coupon_with_auto_create(
+        self,
+        client: CouponAPIClient,
+        config: CouponAutoSyncConfig,
+        progress: BulkApplyProgress,
+        results: Dict[str, Any],
+        vendor_item_ids: List[int],
+        batch_size: int = 10000
+    ):
+        """
+        즉시할인쿠폰 자동 생성 모드: 1만개 상품마다 새 쿠폰 생성
+
+        Args:
+            client: 쿠팡 API 클라이언트
+            config: 쿠폰 설정
+            progress: 진행 상황
+            results: 결과 딕셔너리
+            vendor_item_ids: 적용할 상품 옵션 ID 목록
+            batch_size: 배치 크기 (기본 10000, 즉시할인쿠폰 최대 한도)
+        """
+        from datetime import datetime, timedelta
+
+        # 필수 설정 확인
+        if not config.contract_id:
+            logger.error("[INSTANT-AUTO] No contract_id configured. Cannot create coupons.")
+            results["instant_failed"] += len(vendor_item_ids)
+            return
+
+        if not config.instant_coupon_discount:
+            logger.error("[INSTANT-AUTO] No discount configured. Cannot create coupons.")
+            results["instant_failed"] += len(vendor_item_ids)
+            return
+
+        # 쿠폰 설정
+        title_template = config.instant_coupon_title_template or config.instant_coupon_name or "자동생성 즉시할인"
+        duration_days = config.instant_coupon_duration_days or 30
+        discount = config.instant_coupon_discount
+        discount_type = config.instant_coupon_discount_type or "RATE"
+        max_discount_price = config.instant_coupon_max_discount_price or 10000
+
+        # 배치별로 새 쿠폰 생성
+        batch_count = 0
+        for i in range(0, len(vendor_item_ids), batch_size):
+            batch = vendor_item_ids[i:i+batch_size]
+            batch_count += 1
+
+            try:
+                # 쿠폰 기간 설정 (다음날 00시부터 시작)
+                now = datetime.now()
+                tomorrow = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+                start_at = tomorrow.strftime("%Y-%m-%d %H:%M:%S")
+                end_at = (tomorrow + timedelta(days=duration_days)).strftime("%Y-%m-%d %H:%M:%S")
+
+                # 쿠폰 제목 (배치 번호 포함, 최대 45자)
+                coupon_name = f"{title_template} #{batch_count}"[:45]
+
+                logger.info(f"[INSTANT-AUTO] Creating coupon '{coupon_name}' for {len(batch)} items")
+                logger.info(f"[INSTANT-AUTO] Settings: discount={discount}, type={discount_type}, maxDiscount={max_discount_price}")
+
+                # 쿠폰 생성 + 상품 적용
+                result = client.create_instant_coupon_with_items(
+                    contract_id=config.contract_id,
+                    name=coupon_name,
+                    discount=discount,
+                    discount_type=discount_type,
+                    max_discount_price=max_discount_price,
+                    start_at=start_at,
+                    end_at=end_at,
+                    vendor_item_ids=batch
+                )
+
+                if result.get("success"):
+                    results["instant_success"] += len(batch)
+                    logger.info(f"[INSTANT-AUTO] Coupon {result.get('couponId')} created successfully with {len(batch)} items")
+                else:
+                    results["instant_failed"] += len(batch)
+                    error_msg = result.get("message", "Unknown error")
+                    logger.error(f"[INSTANT-AUTO] Failed to create coupon: {error_msg}")
+
+            except Exception as e:
+                results["instant_failed"] += len(batch)
+                logger.error(f"[INSTANT-AUTO] Exception creating coupon: {str(e)}", exc_info=True)
+
+        logger.info(f"[INSTANT-AUTO] Completed: {batch_count} coupons created, success={results['instant_success']}, failed={results['instant_failed']}")
 
     def _legacy_apply_coupons_to_all_products(
         self,

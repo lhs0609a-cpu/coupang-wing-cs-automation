@@ -201,7 +201,291 @@ class CouponAPIClient:
             logger.error(f"Error checking request status: {str(e)}")
             raise
 
+    def create_instant_coupon(
+        self,
+        contract_id: int,
+        name: str,
+        discount: int,
+        discount_type: str,
+        max_discount_price: int,
+        start_at: str,
+        end_at: str,
+        wow_exclusive: bool = False
+    ) -> Dict[str, Any]:
+        """
+        즉시할인쿠폰 생성
+
+        Args:
+            contract_id: 계약서 ID
+            name: 프로모션명 (최대 45자)
+            discount: 할인율 (정률: 1~100) 또는 할인금액 (정액: 1 이상)
+            discount_type: 할인방식 (RATE: 정률할인, FIXED_WITH_QUANTITY: 수량별 정액, PRICE: 정액할인)
+            max_discount_price: 최대할인금액 (최소 10원)
+            start_at: 유효시작일 (yyyy-MM-dd HH:mm:ss)
+            end_at: 유효종료일 (yyyy-MM-dd HH:mm:ss)
+            wow_exclusive: 로켓와우 회원 한정 여부 (기본 false)
+
+        Returns:
+            요청 결과 (requestedId 포함, 비동기 처리)
+        """
+        path = f"/v2/providers/fms/apis/api/v2/vendors/{self.vendor_id}/coupon"
+        url = f"{self.BASE_URL}{path}"
+        headers = self._get_headers("POST", path)
+
+        payload = {
+            "contractId": str(contract_id),
+            "name": name[:45],  # 최대 45자 제한
+            "discount": str(discount),
+            "type": discount_type,
+            "maxDiscountPrice": str(max_discount_price),
+            "startAt": start_at,
+            "endAt": end_at,
+            "wowExclusive": str(wow_exclusive).lower()
+        }
+
+        logger.info(f"Creating instant coupon: name={name}, discount={discount}, type={discount_type}")
+        logger.debug(f"Instant coupon payload: {payload}")
+
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=60)
+            response.raise_for_status()
+            result = response.json()
+            logger.info(f"Instant coupon creation response: {result}")
+            return result
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error creating instant coupon: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"Response: {e.response.text}")
+            raise
+
+    def create_instant_coupon_with_items(
+        self,
+        contract_id: int,
+        name: str,
+        discount: int,
+        discount_type: str,
+        max_discount_price: int,
+        start_at: str,
+        end_at: str,
+        vendor_item_ids: List[int],
+        wow_exclusive: bool = False
+    ) -> Dict[str, Any]:
+        """
+        즉시할인쿠폰 생성 및 상품 적용 (한 번에)
+
+        Args:
+            contract_id: 계약서 ID
+            name: 프로모션명 (최대 45자)
+            discount: 할인율/할인금액
+            discount_type: 할인방식
+            max_discount_price: 최대할인금액
+            start_at: 유효시작일
+            end_at: 유효종료일
+            vendor_item_ids: 적용할 옵션 ID 목록 (최대 10,000개)
+            wow_exclusive: 로켓와우 회원 한정 여부
+
+        Returns:
+            생성 및 적용 결과
+        """
+        import time
+
+        # 1. 쿠폰 생성
+        create_result = self.create_instant_coupon(
+            contract_id=contract_id,
+            name=name,
+            discount=discount,
+            discount_type=discount_type,
+            max_discount_price=max_discount_price,
+            start_at=start_at,
+            end_at=end_at,
+            wow_exclusive=wow_exclusive
+        )
+
+        if create_result.get("code") != 200:
+            return create_result
+
+        requested_id = create_result.get("data", {}).get("content", {}).get("requestedId")
+        if not requested_id:
+            return {"success": False, "message": "쿠폰 생성 요청 ID를 받지 못했습니다"}
+
+        # 2. 생성 완료 대기 (비동기 처리)
+        max_wait = 30  # 최대 30초 대기
+        for i in range(max_wait):
+            time.sleep(1)
+            status_result = self.get_instant_coupon_request_status(requested_id)
+            status = status_result.get("data", {}).get("content", {}).get("status")
+
+            if status == "DONE":
+                coupon_id = status_result.get("data", {}).get("content", {}).get("couponId")
+                if coupon_id:
+                    # 3. 상품 적용
+                    apply_result = self.apply_instant_coupon_to_items(coupon_id, vendor_item_ids)
+                    return {
+                        "success": True,
+                        "couponId": coupon_id,
+                        "couponName": name,
+                        "itemCount": len(vendor_item_ids),
+                        "createResult": create_result,
+                        "applyResult": apply_result
+                    }
+                else:
+                    return {"success": False, "message": "생성된 쿠폰 ID를 찾을 수 없습니다"}
+            elif status == "FAIL":
+                error_msg = status_result.get("data", {}).get("content", {}).get("errorMessage", "알 수 없는 오류")
+                return {"success": False, "message": f"쿠폰 생성 실패: {error_msg}"}
+
+        return {"success": False, "message": "쿠폰 생성 시간 초과"}
+
     # ==================== 다운로드쿠폰 API ====================
+
+    def create_download_coupon(
+        self,
+        title: str,
+        contract_id: int,
+        start_date: str,
+        end_date: str,
+        policies: List[Dict[str, Any]],
+        user_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        다운로드쿠폰 생성
+
+        Args:
+            title: 쿠폰 명칭 (고객에게 노출됨)
+            contract_id: 계약서 ID
+            start_date: 쿠폰 시작일 (YYYY-MM-DD HH:MM:SS)
+            end_date: 쿠폰 종료일 (YYYY-MM-DD HH:MM:SS)
+            policies: 쿠폰 정책 리스트 (최대 3개)
+                - title: 정책 명칭
+                - typeOfDiscount: PRICE(정액) 또는 RATE(정률)
+                - description: 정책 설명
+                - minimumPrice: 최소 구매 금액
+                - discount: 할인 금액/비율
+                - maximumDiscountPrice: 최대 할인 금액 (RATE일 때만 유효)
+                - maximumPerDaily: 1인 1일 최대 발급 수 (최대 9999)
+            user_id: WING 로그인 ID
+
+        Returns:
+            생성된 쿠폰 정보 (couponId 포함)
+
+        Note:
+            - 생성 후 최소 1시간 이후부터 프론트에 반영됨
+            - 생성 후 상품 변경 불가 (상품 변경 시 새 쿠폰 생성 필요)
+        """
+        effective_user_id = user_id or self.wing_username
+        if not effective_user_id:
+            logger.error("userId is required for download coupon creation")
+            return {
+                "success": False,
+                "errorMessage": "WING 로그인 ID(userId)가 필요합니다."
+            }
+
+        path = "/v2/providers/marketplace_openapi/apis/api/v1/coupons"
+        url = f"{self.BASE_URL}{path}"
+        headers = self._get_headers("POST", path)
+
+        payload = {
+            "title": title,
+            "contractId": contract_id,
+            "couponType": "DOWNLOAD",
+            "startDate": start_date,
+            "endDate": end_date,
+            "userId": effective_user_id,
+            "policies": policies
+        }
+
+        logger.info(f"Creating download coupon: title={title}, policies={len(policies)}")
+        logger.debug(f"Coupon payload: {payload}")
+
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=60)
+
+            logger.info(f"Create coupon response status: {response.status_code}")
+            logger.info(f"Create coupon response: {response.text[:500] if response.text else 'empty'}")
+
+            if response.status_code >= 400:
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get("message", response.text)
+                except:
+                    error_msg = response.text
+                logger.error(f"Create coupon failed: {error_msg}")
+                return {
+                    "success": False,
+                    "errorCode": response.status_code,
+                    "errorMessage": error_msg
+                }
+
+            result = response.json()
+            coupon_id = result.get("couponId")
+            logger.info(f"Download coupon created successfully: couponId={coupon_id}")
+
+            return {
+                "success": True,
+                "couponId": coupon_id,
+                "data": result
+            }
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error creating download coupon: {str(e)}")
+            return {
+                "success": False,
+                "errorMessage": f"네트워크 오류: {str(e)}"
+            }
+
+    def create_download_coupon_with_items(
+        self,
+        title: str,
+        contract_id: int,
+        start_date: str,
+        end_date: str,
+        policies: List[Dict[str, Any]],
+        vendor_item_ids: List[int],
+        user_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        다운로드쿠폰 생성 및 상품 적용 (한 번에)
+
+        Args:
+            title: 쿠폰 명칭
+            contract_id: 계약서 ID
+            start_date: 쿠폰 시작일
+            end_date: 쿠폰 종료일
+            policies: 쿠폰 정책 리스트
+            vendor_item_ids: 적용할 상품 옵션 ID 목록 (최대 100개)
+            user_id: WING 로그인 ID
+
+        Returns:
+            생성 및 적용 결과
+        """
+        # 1. 쿠폰 생성
+        create_result = self.create_download_coupon(
+            title=title,
+            contract_id=contract_id,
+            start_date=start_date,
+            end_date=end_date,
+            policies=policies,
+            user_id=user_id
+        )
+
+        if not create_result.get("success"):
+            return create_result
+
+        coupon_id = create_result.get("couponId")
+
+        # 2. 상품 적용
+        apply_result = self.apply_download_coupon_to_items(
+            coupon_id=coupon_id,
+            vendor_item_ids=vendor_item_ids,
+            user_id=user_id
+        )
+
+        return {
+            "success": apply_result.get("requestResultStatus") == "SUCCESS",
+            "couponId": coupon_id,
+            "createResult": create_result,
+            "applyResult": apply_result
+        }
 
     def get_download_coupons(
         self,

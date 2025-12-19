@@ -23,13 +23,27 @@ class CouponAutoSyncConfig(Base):
 
     # 즉시할인쿠폰 설정
     instant_coupon_enabled = Column(Boolean, default=False)
-    instant_coupon_id = Column(Integer, nullable=True)  # 적용할 즉시할인쿠폰 ID
+    instant_coupon_id = Column(Integer, nullable=True)  # 적용할 즉시할인쿠폰 ID (기존 쿠폰 사용 시)
     instant_coupon_name = Column(String(200), nullable=True)  # 쿠폰명 (표시용)
+
+    # 즉시할인쿠폰 자동 생성 설정 (NEW)
+    instant_coupon_auto_create = Column(Boolean, default=True)  # 자동 생성 모드 (기본: 활성화)
+    instant_coupon_title_template = Column(String(45), nullable=True)  # 쿠폰명 템플릿 (최대 45자)
+    instant_coupon_duration_days = Column(Integer, default=30)  # 쿠폰 유효기간 (일)
+    instant_coupon_discount = Column(Integer, nullable=True)  # 할인율 또는 할인금액
+    instant_coupon_discount_type = Column(String(20), default="RATE")  # RATE, PRICE, FIXED_WITH_QUANTITY
+    instant_coupon_max_discount_price = Column(Integer, default=10000)  # 최대할인금액 (최소 10원)
 
     # 다운로드쿠폰 설정
     download_coupon_enabled = Column(Boolean, default=False)
-    download_coupon_id = Column(Integer, nullable=True)  # 적용할 다운로드쿠폰 ID
+    download_coupon_id = Column(Integer, nullable=True)  # 참조용 쿠폰 ID (템플릿으로 사용)
     download_coupon_name = Column(String(200), nullable=True)  # 쿠폰명 (표시용)
+
+    # 다운로드쿠폰 자동 생성 설정 (NEW)
+    download_coupon_auto_create = Column(Boolean, default=True)  # 자동 생성 모드 (기본: 활성화)
+    download_coupon_title_template = Column(String(200), nullable=True)  # 쿠폰명 템플릿 (예: "신규상품 할인쿠폰")
+    download_coupon_duration_days = Column(Integer, default=30)  # 쿠폰 유효기간 (일)
+    download_coupon_policies = Column(JSON, nullable=True)  # 쿠폰 정책 템플릿 (JSON)
 
     # 적용 대기일 (상품 등록 후 며칠 후에 쿠폰 적용할지)
     apply_delay_days = Column(Integer, default=1)  # 기본 1일
@@ -62,9 +76,19 @@ class CouponAutoSyncConfig(Base):
             "instant_coupon_enabled": self.instant_coupon_enabled,
             "instant_coupon_id": self.instant_coupon_id,
             "instant_coupon_name": self.instant_coupon_name,
+            "instant_coupon_auto_create": self.instant_coupon_auto_create,
+            "instant_coupon_title_template": self.instant_coupon_title_template,
+            "instant_coupon_duration_days": self.instant_coupon_duration_days,
+            "instant_coupon_discount": self.instant_coupon_discount,
+            "instant_coupon_discount_type": self.instant_coupon_discount_type,
+            "instant_coupon_max_discount_price": self.instant_coupon_max_discount_price,
             "download_coupon_enabled": self.download_coupon_enabled,
             "download_coupon_id": self.download_coupon_id,
             "download_coupon_name": self.download_coupon_name,
+            "download_coupon_auto_create": self.download_coupon_auto_create,
+            "download_coupon_title_template": self.download_coupon_title_template,
+            "download_coupon_duration_days": self.download_coupon_duration_days,
+            "download_coupon_policies": self.download_coupon_policies,
             "apply_delay_days": self.apply_delay_days,
             "contract_id": self.contract_id,
             "excluded_categories": self.excluded_categories or [],
