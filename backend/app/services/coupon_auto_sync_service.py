@@ -187,21 +187,40 @@ class CouponAutoSyncService:
             coupon_data = result.get("data") or result
 
             # API 응답에서 쿠폰 정보 추출
+            # 다운로드 쿠폰 API 응답 필드명: couponPolicies (policies가 아님!)
+            raw_policies = coupon_data.get("couponPolicies") or coupon_data.get("policies") or []
+
             coupon = {
                 "couponId": coupon_data.get("couponId") or coupon_id,
                 "couponName": coupon_data.get("title") or coupon_data.get("couponName") or f"쿠폰 #{coupon_id}",
                 "discountType": coupon_data.get("discountType"),
                 "discountValue": coupon_data.get("discountValue"),
-                "status": coupon_data.get("status"),
+                "status": coupon_data.get("couponStatus") or coupon_data.get("status"),
                 "startDate": coupon_data.get("startDate"),
                 "endDate": coupon_data.get("endDate"),
                 # 추가 정보
                 "maxDiscountPrice": coupon_data.get("maxDiscountPrice"),
                 "minOrderPrice": coupon_data.get("minOrderPrice"),
                 "couponCount": coupon_data.get("couponCount"),
-                # 정책 정보 (API에서 제공하는 경우)
-                "policies": coupon_data.get("policies", []),
+                "appliedOptionCount": coupon_data.get("appliedOptionCount"),
+                # 정책 정보 (couponPolicies -> policies로 변환)
+                "policies": [],
             }
+
+            # couponPolicies를 프론트엔드에서 사용하는 형식으로 변환
+            for policy in raw_policies:
+                # API 응답 필드: typeOfDiscount, minimumPrice, discount, maximumDiscountPrice
+                # 프론트엔드 형식: discountType, minimumPurchasePrice, discountValue, maximumDiscountPrice
+                converted_policy = {
+                    "title": policy.get("title", ""),
+                    "discountType": policy.get("typeOfDiscount"),  # RATE or PRICE
+                    "discountValue": policy.get("discount"),
+                    "maximumDiscountPrice": policy.get("maximumDiscountPrice", 0),
+                    "minimumPurchasePrice": policy.get("minimumPrice", 0),
+                    "description": policy.get("description", ""),
+                    "maximumPerDaily": policy.get("maximumPerDay", 9999),
+                }
+                coupon["policies"].append(converted_policy)
 
             # 정책 정보가 없고 할인 정보가 있으면 기본 정책 생성
             if not coupon["policies"] and coupon["discountType"]:
@@ -1068,21 +1087,46 @@ class CouponAutoSyncService:
         from datetime import datetime, timedelta
 
         # 쿠폰 정책 가져오기 (설정에서 또는 기존 쿠폰에서)
-        policies = config.download_coupon_policies
-        if not policies and config.download_coupon_id:
+        raw_policies = config.download_coupon_policies
+        if not raw_policies and config.download_coupon_id:
             # 기존 쿠폰에서 정책 복사
             try:
                 existing_coupon = client.get_download_coupon(config.download_coupon_id)
                 if existing_coupon and "couponPolicies" in existing_coupon:
-                    policies = existing_coupon.get("couponPolicies", [])
+                    raw_policies = existing_coupon.get("couponPolicies", [])
                     logger.info(f"[AUTO-CREATE] Copied policies from existing coupon {config.download_coupon_id}")
             except Exception as e:
                 logger.error(f"[AUTO-CREATE] Failed to get existing coupon policies: {e}")
 
-        if not policies:
+        if not raw_policies:
             logger.error("[AUTO-CREATE] No coupon policies configured. Cannot create coupons.")
             results["download_failed"] += len(vendor_item_ids)
             return
+
+        # 정책을 API 형식으로 변환 (프론트엔드 형식 -> API 형식)
+        # 프론트엔드: discountType, discountValue, minimumPurchasePrice, maximumPerDaily
+        # API 형식: typeOfDiscount, discount, minimumPrice, maximumPerDaily
+        policies = []
+        for i, p in enumerate(raw_policies):
+            # 이미 API 형식인지 확인 (typeOfDiscount 필드가 있으면 API 형식)
+            if "typeOfDiscount" in p:
+                # 이미 API 형식
+                policies.append(p)
+            else:
+                # 프론트엔드 형식 -> API 형식으로 변환
+                api_policy = {
+                    "title": p.get("title") or f"정책 {i+1}",
+                    "typeOfDiscount": p.get("discountType", "RATE"),  # RATE or PRICE
+                    "description": p.get("description", ""),
+                    "minimumPrice": int(p.get("minimumPurchasePrice", 0) or 0),
+                    "discount": int(p.get("discountValue", 0) or 0),
+                    "maximumDiscountPrice": int(p.get("maximumDiscountPrice", 0) or 0),
+                    "maximumPerDaily": int(p.get("maximumPerDaily", 9999) or 9999),
+                }
+                policies.append(api_policy)
+                logger.info(f"[AUTO-CREATE] Converted policy {i+1}: {api_policy}")
+
+        logger.info(f"[AUTO-CREATE] Final policies for coupon creation: {policies}")
 
         # 쿠폰 제목 템플릿
         title_template = config.download_coupon_title_template or config.download_coupon_name or "자동생성 할인쿠폰"

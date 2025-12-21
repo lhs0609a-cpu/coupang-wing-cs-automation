@@ -1164,7 +1164,7 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
                           {copiedPolicies.map((policy, index) => (
                             <div key={index} className="policy-item">
                               <span className="policy-discount">
-                                {policy.discountType === 'PERCENT'
+                                {(policy.discountType === 'RATE' || policy.discountType === 'PERCENT')
                                   ? `${policy.discountValue}% 할인`
                                   : `${policy.discountValue?.toLocaleString()}원 할인`}
                               </span>
