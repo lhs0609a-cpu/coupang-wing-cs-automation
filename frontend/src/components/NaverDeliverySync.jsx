@@ -24,8 +24,10 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
-  Zap
+  Zap,
+  HelpCircle
 } from 'lucide-react'
+import TutorialButton from './TutorialButton'
 import '../styles/NaverDeliverySync.css'
 
 const NaverDeliverySync = ({ apiBaseUrl, showNotification }) => {
@@ -451,6 +453,9 @@ const NaverDeliverySync = ({ apiBaseUrl, showNotification }) => {
           </div>
         </div>
       </div>
+
+      {/* 튜토리얼 배너 */}
+      <TutorialButton tabId="delivery-sync" variant="banner" />
 
       {/* 통계 카드 */}
       <div className="stats-grid">
@@ -996,6 +1001,9 @@ const NaverDeliverySync = ({ apiBaseUrl, showNotification }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* 플로팅 튜토리얼 버튼 */}
+      <TutorialButton tabId="delivery-sync" variant="floating" />
     </div>
   )
 }

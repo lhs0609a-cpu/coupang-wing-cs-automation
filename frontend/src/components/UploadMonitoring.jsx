@@ -28,6 +28,7 @@ import {
   Line
 } from 'recharts'
 import axios from 'axios'
+import TutorialButton from './TutorialButton'
 import '../styles/UploadMonitoring.css'
 
 // 색상 팔레트 (사람별 색상)
@@ -601,6 +602,9 @@ const UploadMonitoring = ({ apiBaseUrl }) => {
           </motion.div>
         </div>
       )}
+
+      {/* 플로팅 튜토리얼 버튼 */}
+      <TutorialButton tabId="upload-monitoring" variant="floating" />
     </div>
   )
 }

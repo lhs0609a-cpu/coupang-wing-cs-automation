@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ThemeProvider } from './contexts/ThemeContext'
+import { TutorialProvider } from './contexts/TutorialContext'
+import TutorialOverlay from './components/TutorialOverlay'
+import TutorialButton from './components/TutorialButton'
 import Sidebar from './components/Sidebar'
 import Dashboard from './components/Dashboard'
 import InquiryManagement from './components/InquiryManagement'
@@ -435,7 +438,10 @@ function AppContent() {
 function App() {
   return (
     <ThemeProvider>
-      <AppContent />
+      <TutorialProvider>
+        <AppContent />
+        <TutorialOverlay />
+      </TutorialProvider>
     </ThemeProvider>
   )
 }

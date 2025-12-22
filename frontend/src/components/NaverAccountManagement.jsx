@@ -13,6 +13,7 @@ import {
   AlertCircle,
   CheckCircle
 } from 'lucide-react'
+import TutorialButton from './TutorialButton'
 import '../styles/NaverAccountManagement.css'
 
 const NaverAccountManagement = ({ apiBaseUrl, showNotification }) => {
@@ -413,6 +414,9 @@ const NaverAccountManagement = ({ apiBaseUrl, showNotification }) => {
           ))
         )}
       </div>
+
+      {/* 플로팅 튜토리얼 버튼 */}
+      <TutorialButton tabId="naver-accounts" variant="floating" />
     </div>
   )
 }

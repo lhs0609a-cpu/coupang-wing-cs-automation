@@ -27,6 +27,7 @@ import {
   XCircle,
   StopCircle
 } from 'lucide-react'
+import TutorialButton from './TutorialButton'
 import '../styles/PromotionManagement.css'
 
 const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
@@ -1623,6 +1624,9 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
           <p>쿠폰 자동연동을 설정할 쿠팡 계정을 선택하세요</p>
         </div>
       )}
+
+      {/* 플로팅 튜토리얼 버튼 */}
+      <TutorialButton tabId="promotion" variant="floating" />
     </div>
   )
 }

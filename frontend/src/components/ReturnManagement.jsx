@@ -13,6 +13,7 @@ import {
   Settings,
   Save
 } from 'lucide-react'
+import TutorialButton from './TutorialButton'
 import '../styles/ReturnManagement.css'
 
 const ReturnManagement = ({ apiBaseUrl, showNotification }) => {
@@ -1703,6 +1704,9 @@ const ReturnManagement = ({ apiBaseUrl, showNotification }) => {
           </tbody>
         </table>
       </div>
+
+      {/* 플로팅 튜토리얼 버튼 */}
+      <TutorialButton tabId="returns" variant="floating" />
     </div>
   )
 }

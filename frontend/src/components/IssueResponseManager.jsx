@@ -23,6 +23,7 @@ import {
   Info,
   Check
 } from 'lucide-react'
+import TutorialButton from './TutorialButton'
 import '../styles/IssueResponseManager.css'
 
 const IssueResponseManager = ({ apiBaseUrl, showNotification }) => {
@@ -798,6 +799,9 @@ const IssueResponseManager = ({ apiBaseUrl, showNotification }) => {
         {activeTab === 'history' && renderHistoryTab()}
         {activeTab === 'stats' && renderStatsTab()}
       </div>
+
+      {/* 플로팅 튜토리얼 버튼 */}
+      <TutorialButton tabId="issue-response" variant="floating" />
     </motion.div>
   )
 }

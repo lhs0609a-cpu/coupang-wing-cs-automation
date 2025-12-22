@@ -13,6 +13,7 @@ import {
   CheckCircle,
   ShoppingBag
 } from 'lucide-react'
+import TutorialButton from './TutorialButton'
 import '../styles/NaverAccountManagement.css'
 
 const CoupangAccountManagement = ({ apiBaseUrl, showNotification }) => {
@@ -343,6 +344,9 @@ const CoupangAccountManagement = ({ apiBaseUrl, showNotification }) => {
           ))
         )}
       </div>
+
+      {/* 플로팅 튜토리얼 버튼 */}
+      <TutorialButton tabId="coupang-accounts" variant="floating" />
     </div>
   )
 }

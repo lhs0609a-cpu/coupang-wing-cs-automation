@@ -11,6 +11,7 @@ import {
 import StatCard from './StatCard'
 import ChatGPTStatus from './ChatGPTStatus'
 import CoupangWingAutomation from './CoupangWingAutomation'
+import TutorialButton from './TutorialButton'
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import '../styles/Dashboard.css'
 
@@ -228,6 +229,9 @@ const Dashboard = ({ stats, automationStats, apiBaseUrl }) => {
 
       {/* Coupang Wing Automation */}
       <CoupangWingAutomation apiBaseUrl={apiBaseUrl} />
+
+      {/* 플로팅 튜토리얼 버튼 */}
+      <TutorialButton tabId="dashboard" variant="floating" />
     </div>
   )
 }

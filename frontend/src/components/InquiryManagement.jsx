@@ -26,6 +26,7 @@ import {
   Calendar
 } from 'lucide-react'
 import AutomationLogs from './AutomationLogs'
+import TutorialButton from './TutorialButton'
 import '../styles/InquiryManagement.css'
 
 const InquiryManagement = ({ responses = [], onApprove, onReject, loading, apiBaseUrl, showNotification }) => {
@@ -790,6 +791,9 @@ const InquiryManagement = ({ responses = [], onApprove, onReject, loading, apiBa
       ) : activeSubTab === 'settings' ? (
         renderGptSettings()
       ) : null}
+
+      {/* 플로팅 튜토리얼 버튼 */}
+      <TutorialButton tabId="inquiries" variant="floating" />
     </div>
   )
 }

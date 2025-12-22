@@ -31,6 +31,7 @@ import {
   Info,
   Terminal
 } from 'lucide-react'
+import TutorialButton from './TutorialButton'
 import '../styles/NaverPayDelivery.css'
 
 const NaverPayDelivery = ({ apiBaseUrl, showNotification }) => {
@@ -1132,6 +1133,9 @@ const NaverPayDelivery = ({ apiBaseUrl, showNotification }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* 플로팅 튜토리얼 버튼 */}
+      <TutorialButton tabId="naverpay-delivery" variant="floating" />
     </div>
   )
 }
