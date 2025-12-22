@@ -29,6 +29,7 @@ import {
   Wifi,
   WifiOff
 } from 'lucide-react'
+import TutorialButton from './TutorialButton'
 import '../styles/NaverReviewManagement.css'
 
 const NaverReviewManagement = ({ apiBaseUrl: cloudApiBaseUrl, showNotification }) => {
@@ -1260,6 +1261,9 @@ const NaverReviewManagement = ({ apiBaseUrl: cloudApiBaseUrl, showNotification }
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* 플로팅 튜토리얼 버튼 */}
+      <TutorialButton tabId="naver-review" variant="floating" />
     </div>
   )
 }

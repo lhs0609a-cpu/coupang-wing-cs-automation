@@ -18,6 +18,7 @@ import {
   ArrowUpDown
 } from 'lucide-react'
 import { getApiBaseUrl } from '../utils/apiConfig'
+import TutorialButton from './TutorialButton'
 import '../styles/ProductSearch.css'
 
 const SHEET_ID = '1wBxJlm1_p3BJAi16hcgw0XxlnW4Fquk_gfm9dtE4QR0'
@@ -662,6 +663,9 @@ const ProductSearch = ({ showNotification }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* 플로팅 튜토리얼 버튼 */}
+      <TutorialButton tabId="product-search" variant="floating" />
     </div>
   )
 }
