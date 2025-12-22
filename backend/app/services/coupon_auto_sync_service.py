@@ -1132,6 +1132,21 @@ class CouponAutoSyncService:
         title_template = config.download_coupon_title_template or config.download_coupon_name or "자동생성 할인쿠폰"
         duration_days = config.download_coupon_duration_days or 30
 
+        # 계약서 종료일 확인하여 쿠폰 종료일 자동 조정
+        contract_end_date = None
+        try:
+            contracts_response = client.get_contract_list()
+            if contracts_response and "data" in contracts_response:
+                for contract in contracts_response["data"]:
+                    if contract.get("contractId") == config.contract_id:
+                        contract_end_str = contract.get("end")
+                        if contract_end_str:
+                            contract_end_date = datetime.strptime(contract_end_str, "%Y-%m-%d %H:%M:%S")
+                            logger.info(f"[AUTO-CREATE] Contract {config.contract_id} ends at: {contract_end_date}")
+                        break
+        except Exception as e:
+            logger.warning(f"[AUTO-CREATE] Failed to get contract info: {e}")
+
         # 배치별로 새 쿠폰 생성
         batch_count = 0
         for i in range(0, len(vendor_item_ids), batch_size):
@@ -1142,7 +1157,17 @@ class CouponAutoSyncService:
                 # 쿠폰 기간 설정 (1시간 후부터 시작)
                 now = datetime.now()
                 start_date = (now + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
-                end_date = (now + timedelta(days=duration_days)).strftime("%Y-%m-%d %H:%M:%S")
+
+                # 쿠폰 종료일 계산 (계약서 종료일을 넘지 않도록 자동 조정)
+                desired_end = now + timedelta(days=duration_days)
+                if contract_end_date:
+                    # 계약서 종료일보다 1일 전으로 설정 (안전 마진)
+                    max_end = contract_end_date - timedelta(days=1)
+                    if desired_end > max_end:
+                        desired_end = max_end
+                        logger.info(f"[AUTO-CREATE] Adjusted coupon end date to contract end: {desired_end}")
+
+                end_date = desired_end.strftime("%Y-%m-%d %H:%M:%S")
 
                 # 쿠폰 제목 (배치 번호 포함)
                 coupon_title = f"{title_template} #{batch_count}"
@@ -1214,6 +1239,21 @@ class CouponAutoSyncService:
         discount_type = config.instant_coupon_discount_type or "RATE"
         max_discount_price = config.instant_coupon_max_discount_price or 10000
 
+        # 계약서 종료일 확인하여 쿠폰 종료일 자동 조정
+        contract_end_date = None
+        try:
+            contracts_response = client.get_contract_list()
+            if contracts_response and "data" in contracts_response:
+                for contract in contracts_response["data"]:
+                    if contract.get("contractId") == config.contract_id:
+                        contract_end_str = contract.get("end")
+                        if contract_end_str:
+                            contract_end_date = datetime.strptime(contract_end_str, "%Y-%m-%d %H:%M:%S")
+                            logger.info(f"[INSTANT-AUTO] Contract {config.contract_id} ends at: {contract_end_date}")
+                        break
+        except Exception as e:
+            logger.warning(f"[INSTANT-AUTO] Failed to get contract info: {e}")
+
         # 배치별로 새 쿠폰 생성
         batch_count = 0
         for i in range(0, len(vendor_item_ids), batch_size):
@@ -1225,7 +1265,17 @@ class CouponAutoSyncService:
                 now = datetime.now()
                 tomorrow = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
                 start_at = tomorrow.strftime("%Y-%m-%d %H:%M:%S")
-                end_at = (tomorrow + timedelta(days=duration_days)).strftime("%Y-%m-%d %H:%M:%S")
+
+                # 쿠폰 종료일 계산 (계약서 종료일을 넘지 않도록 자동 조정)
+                desired_end = tomorrow + timedelta(days=duration_days)
+                if contract_end_date:
+                    # 계약서 종료일보다 1일 전으로 설정 (안전 마진)
+                    max_end = contract_end_date - timedelta(days=1)
+                    if desired_end > max_end:
+                        desired_end = max_end
+                        logger.info(f"[INSTANT-AUTO] Adjusted coupon end date to contract end: {desired_end}")
+
+                end_at = desired_end.strftime("%Y-%m-%d %H:%M:%S")
 
                 # 쿠폰 제목 (배치 번호 포함, 최대 45자)
                 coupon_name = f"{title_template} #{batch_count}"[:45]
