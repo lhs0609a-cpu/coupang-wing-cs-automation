@@ -15,7 +15,8 @@ import {
   Search,
   GripVertical,
   BarChart3,
-  AlertTriangle
+  AlertTriangle,
+  ArrowRightLeft
 } from 'lucide-react'
 import { useTheme } from '../contexts/ThemeContext'
 import '../styles/Sidebar.css'
@@ -27,6 +28,7 @@ const defaultMenuItems = [
   { id: 'returns', label: '반품 관리', icon: 'PackageX' },
   { id: 'issue-response', label: '문제 대응', icon: 'AlertTriangle' },
   { id: 'promotion', label: '프로모션', icon: 'Ticket' },
+  { id: 'delivery-sync', label: '배송 동기화', icon: 'ArrowRightLeft' },
   { id: 'naverpay-delivery', label: '배송 추적', icon: 'Truck' },
   { id: 'product-search', label: '상품 검색', icon: 'Search' },
   { id: 'coupang-accounts', label: '쿠팡 계정', icon: 'ShoppingBag' },
@@ -47,7 +49,8 @@ const iconMap = {
   Truck,
   Search,
   BarChart3,
-  AlertTriangle
+  AlertTriangle,
+  ArrowRightLeft
 }
 
 const MenuItem = ({ item, isActive, onClick }) => {

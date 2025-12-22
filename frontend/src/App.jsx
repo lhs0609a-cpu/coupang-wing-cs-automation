@@ -12,6 +12,7 @@ import NaverOAuthCallback from './components/NaverOAuthCallback'
 import PromotionManagement from './components/PromotionManagement'
 import NaverReviewManagement from './components/NaverReviewManagement'
 import NaverPayDelivery from './components/NaverPayDelivery'
+import NaverDeliverySync from './components/NaverDeliverySync'
 import ProductSearch from './components/ProductSearch'
 import UploadMonitoring from './components/UploadMonitoring'
 import IssueResponseManager from './components/IssueResponseManager'
@@ -354,6 +355,21 @@ function AppContent() {
               transition={{ duration: 0.3 }}
             >
               <NaverPayDelivery
+                apiBaseUrl={apiBaseUrl}
+                showNotification={showNotification}
+              />
+            </motion.div>
+          )}
+
+          {activeTab === 'delivery-sync' && (
+            <motion.div
+              key="delivery-sync"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <NaverDeliverySync
                 apiBaseUrl={apiBaseUrl}
                 showNotification={showNotification}
               />
