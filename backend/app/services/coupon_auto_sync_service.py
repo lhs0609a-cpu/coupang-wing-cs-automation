@@ -1180,12 +1180,27 @@ class CouponAutoSyncService:
             batch_count += 1
 
             try:
-                # 쿠폰 기간 설정 (1시간 후부터 시작)
-                now = datetime.now()
-                start_date = (now + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+                # 쿠폰 기간 설정 (KST 기준 다음날 00시부터 시작 - 시간대 문제 방지)
+                # 서버는 UTC지만 쿠팡 API는 KST를 사용하므로 충분한 여유를 둠
+                from datetime import timezone
+                import pytz
+
+                try:
+                    kst = pytz.timezone('Asia/Seoul')
+                    now_kst = datetime.now(kst)
+                    tomorrow_kst = (now_kst + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                    start_date = tomorrow_kst.strftime("%Y-%m-%d %H:%M:%S")
+                    logger.info(f"[AUTO-CREATE] Using KST time - now: {now_kst}, start: {tomorrow_kst}")
+                except Exception as tz_error:
+                    # pytz 없으면 UTC 기준으로 +10시간 (안전 마진)
+                    logger.warning(f"[AUTO-CREATE] pytz not available, using UTC+10h: {tz_error}")
+                    now = datetime.utcnow()
+                    start_date = (now + timedelta(hours=10)).strftime("%Y-%m-%d %H:%M:%S")
+                    tomorrow_kst = now + timedelta(hours=10)
 
                 # 쿠폰 종료일 계산 (계약서 종료일을 넘지 않도록 자동 조정)
-                desired_end = now + timedelta(days=duration_days)
+                now = datetime.utcnow()
+                desired_end = tomorrow_kst + timedelta(days=duration_days)
                 if contract_end_date:
                     # 계약서 종료일보다 1일 전으로 설정 (안전 마진)
                     max_end = contract_end_date - timedelta(days=1)
