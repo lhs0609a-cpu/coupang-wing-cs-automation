@@ -1,0 +1,136 @@
+{
+  "type": "suspension",
+  "title": "상품 삭제/정지 대응 가이드",
+  "description": "정책 위반으로 인한 상품 삭제, 판매 정지, 계정 제재 대응 방법",
+  "subtypes": [
+    {
+      "id": "product_deletion",
+      "name": "상품 삭제",
+      "description": "정책 위반으로 상품이 삭제된 경우",
+      "severity_default": "high",
+      "keywords": ["상품삭제", "삭제", "노출제한", "판매불가", "상품제거"],
+      "checklist": [
+        "삭제 사유 정확히 파악",
+        "해당 정책 내용 확인",
+        "위반 사항 존재 여부 검토",
+        "수정 후 재등록 가능 여부 확인"
+      ],
+      "tips": [
+        "삭제 사유를 정확히 이해한 후 대응",
+        "실제 위반이면 수정 후 재등록 권장",
+        "억울한 경우 증빙과 함께 이의제기",
+        "반복 위반시 계정 제재 가능성 주의"
+      ],
+      "required_documents": [
+        "상품 관련 증빙 자료",
+        "인증서 (필요시)",
+        "수정 전후 비교 자료"
+      ]
+    },
+    {
+      "id": "sales_suspension",
+      "name": "판매 정지",
+      "description": "특정 상품 또는 카테고리 판매가 정지된 경우",
+      "severity_default": "high",
+      "keywords": ["판매정지", "판매중지", "일시정지", "판매제한"],
+      "checklist": [
+        "정지 사유 및 기간 확인",
+        "해제 조건 파악",
+        "필요 서류 확인",
+        "정지 기간 중 다른 상품 영향 확인"
+      ],
+      "tips": [
+        "정지 해제 조건을 정확히 파악",
+        "요청 서류는 신속하게 제출",
+        "정지 기간 중 재발 방지 조치",
+        "고객 문의 대응 준비"
+      ],
+      "required_documents": [
+        "해제 요청서",
+        "개선 조치 증빙",
+        "관련 인증서류"
+      ]
+    },
+    {
+      "id": "account_restriction",
+      "name": "계정 제재",
+      "description": "판매자 계정 자체에 제재가 적용된 경우",
+      "severity_default": "critical",
+      "keywords": ["계정제재", "계정정지", "판매자제재", "이용제한", "계정제한"],
+      "checklist": [
+        "제재 수준 및 범위 확인",
+        "제재 사유 상세 파악",
+        "해제 가능 여부 및 조건 확인",
+        "정산금 영향 확인"
+      ],
+      "tips": [
+        "심각한 사안으로 신속 대응 필요",
+        "모든 위반 사항 파악 및 해결",
+        "재발 방지 계획 수립",
+        "법률 전문가 자문 고려"
+      ],
+      "required_documents": [
+        "개선 계획서",
+        "재발 방지 서약서",
+        "관련 증빙 자료 일체"
+      ]
+    },
+    {
+      "id": "policy_violation",
+      "name": "정책 위반 경고",
+      "description": "쿠팡 판매 정책 위반에 대한 경고",
+      "severity_default": "medium",
+      "keywords": ["정책위반", "경고", "주의", "위반안내", "정책준수"],
+      "checklist": [
+        "위반 정책 내용 확인",
+        "실제 위반 여부 판단",
+        "수정/개선 필요 사항 파악",
+        "향후 주의사항 숙지"
+      ],
+      "tips": [
+        "경고 단계에서 신속히 조치",
+        "반복 경고는 상위 제재로 이어짐",
+        "관련 정책 전체 재확인",
+        "다른 상품도 점검"
+      ],
+      "required_documents": [
+        "개선 조치 증빙",
+        "수정 전후 비교"
+      ]
+    }
+  ],
+  "response_templates": [
+    {
+      "id": "appeal_wrongful_deletion",
+      "name": "부당 삭제 이의제기",
+      "response_type": "appeal",
+      "for_subtypes": ["product_deletion"],
+      "template": "안녕하세요, 쿠팡 판매자 지원팀 담당자님.\n\n상품 삭제 조치에 대해 이의를 제기합니다.\n\n삭제된 상품: {product_name}\n삭제 사유: {deletion_reason}\n\n본 상품은 다음과 같은 이유로 정책 위반에 해당하지 않습니다:\n{appeal_reason}\n\n증빙 자료를 첨부하오니 검토 후 상품 복원을 요청드립니다.\n\n감사합니다.\n{seller_name} 드림"
+    },
+    {
+      "id": "improvement_plan",
+      "name": "개선 계획서",
+      "response_type": "statement",
+      "for_subtypes": ["account_restriction", "sales_suspension"],
+      "template": "안녕하세요, 쿠팡 판매자 지원팀 담당자님.\n\n{issue_summary} 관련하여 개선 계획을 제출합니다.\n\n1. 위반 사항 인지: {violation_acknowledged}\n\n2. 즉시 조치 사항:\n   - {immediate_action_1}\n   - {immediate_action_2}\n\n3. 재발 방지 대책:\n   - {prevention_measure_1}\n   - {prevention_measure_2}\n\n4. 이행 일정: {timeline}\n\n위 계획대로 성실히 이행하겠습니다.\n\n감사합니다.\n{seller_name} 드림"
+    },
+    {
+      "id": "policy_compliance_confirmation",
+      "name": "정책 준수 확인서",
+      "response_type": "statement",
+      "for_subtypes": ["policy_violation"],
+      "template": "안녕하세요, 쿠팡 판매자 지원팀 담당자님.\n\n정책 위반 안내를 확인하였습니다.\n\n1. 위반 내용: {violation_content}\n2. 조치 완료: {correction_done}\n3. 수정 사항: {what_changed}\n\n향후 동일한 위반이 발생하지 않도록 주의하겠습니다.\n\n감사합니다.\n{seller_name} 드림"
+    }
+  ],
+  "common_mistakes": [
+    "삭제 사유를 제대로 파악하지 않고 대응",
+    "감정적이거나 공격적인 태도",
+    "증빙 없이 억울함만 호소",
+    "재발 방지 대책 미제시"
+  ],
+  "legal_references": [
+    "전자상거래법 관련 조항",
+    "쿠팡 판매자 이용약관",
+    "개인정보보호법 (해당시)"
+  ]
+}

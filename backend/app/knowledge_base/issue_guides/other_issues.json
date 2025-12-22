@@ -1,0 +1,161 @@
+{
+  "type": "other",
+  "title": "기타 문제 대응 가이드",
+  "description": "리뷰, 허위광고, 가격정책, 배송, 반품 관련 기타 문제 대응",
+  "subtypes": [
+    {
+      "id": "fake_review",
+      "name": "허위/조작 리뷰 신고",
+      "description": "리뷰 조작 또는 허위 리뷰 관련 신고 및 제재",
+      "severity_default": "high",
+      "keywords": ["리뷰조작", "허위리뷰", "가짜리뷰", "리뷰신고", "별점조작"],
+      "checklist": [
+        "신고된 리뷰 내용 확인",
+        "리뷰 작성자 실제 구매 여부 확인",
+        "리뷰 이벤트 진행 여부 검토",
+        "리뷰 대가 제공 여부 확인"
+      ],
+      "tips": [
+        "정상적인 리뷰 이벤트와 조작의 차이 명확히",
+        "구매 고객의 자발적 리뷰는 문제없음",
+        "대가성 리뷰는 명확히 표시 필요",
+        "경쟁사 악의적 신고 가능성 검토"
+      ],
+      "required_documents": [
+        "리뷰 이벤트 내용 (해당시)",
+        "고객 구매 내역",
+        "리뷰 작성 경위 설명"
+      ]
+    },
+    {
+      "id": "false_advertising",
+      "name": "허위/과대 광고",
+      "description": "상품 정보의 허위 또는 과대 표현 관련 문제",
+      "severity_default": "high",
+      "keywords": ["허위광고", "과대광고", "거짓표시", "부당광고", "표시위반"],
+      "checklist": [
+        "문제된 표현 내용 확인",
+        "실제 상품과 표현의 일치 여부",
+        "법적 기준 검토",
+        "경쟁사 유사 표현 확인"
+      ],
+      "tips": [
+        "근거 없는 최상급 표현 삭제 (최고, 최초 등)",
+        "효능/효과 표현은 인증 기반으로만",
+        "비교 광고는 객관적 근거 필수",
+        "즉시 수정이 가장 빠른 해결책"
+      ],
+      "required_documents": [
+        "표현 근거 자료",
+        "인증서/시험성적서 (해당시)",
+        "수정 전후 비교"
+      ]
+    },
+    {
+      "id": "delivery_issue",
+      "name": "배송 관련 문제",
+      "description": "배송 지연, 오배송, 분실 등 배송 관련 클레임",
+      "severity_default": "medium",
+      "keywords": ["배송지연", "오배송", "분실", "미배송", "배송문제"],
+      "checklist": [
+        "배송 추적 기록 확인",
+        "고객 주소 정확성 확인",
+        "택배사 귀책 여부 파악",
+        "보상 정책 확인"
+      ],
+      "tips": [
+        "배송 추적 정보 먼저 확인",
+        "택배사 귀책이면 클레임 접수",
+        "고객에게 신속한 상황 안내",
+        "재발송 또는 환불 신속 처리"
+      ],
+      "required_documents": [
+        "배송 추적 기록",
+        "택배사 답변/처리 내역",
+        "고객과의 커뮤니케이션 기록"
+      ]
+    },
+    {
+      "id": "return_dispute",
+      "name": "반품/환불 분쟁",
+      "description": "반품 거부, 환불 지연 등 관련 고객 클레임",
+      "severity_default": "medium",
+      "keywords": ["반품거부", "환불지연", "반품분쟁", "환불거절", "교환거부"],
+      "checklist": [
+        "반품 사유 확인",
+        "반품 정책 검토",
+        "상품 상태 확인",
+        "고객 요청 합리성 판단"
+      ],
+      "tips": [
+        "전자상거래법 반품 규정 숙지",
+        "단순 변심도 7일 이내 반품 가능",
+        "상품 훼손시 사진 증빙 확보",
+        "신속한 처리가 분쟁 확대 방지"
+      ],
+      "required_documents": [
+        "반품 상품 사진",
+        "고객 커뮤니케이션 기록",
+        "반품 정책 안내 내역"
+      ]
+    },
+    {
+      "id": "customer_complaint",
+      "name": "고객 민원/신고",
+      "description": "고객이 직접 쿠팡에 접수한 민원 및 신고",
+      "severity_default": "medium",
+      "keywords": ["고객민원", "신고", "컴플레인", "불만접수", "고객신고"],
+      "checklist": [
+        "민원 내용 정확히 파악",
+        "고객과의 이전 소통 내역 확인",
+        "해결 가능 방안 검토",
+        "유사 민원 재발 방지책 수립"
+      ],
+      "tips": [
+        "고객 입장에서 문제 이해",
+        "신속하고 성의있는 대응",
+        "합리적인 보상안 제시",
+        "재발 방지 약속"
+      ],
+      "required_documents": [
+        "고객 커뮤니케이션 기록",
+        "문제 상황 관련 증빙",
+        "해결 조치 내역"
+      ]
+    }
+  ],
+  "response_templates": [
+    {
+      "id": "review_clarification",
+      "name": "리뷰 소명서",
+      "response_type": "appeal",
+      "for_subtypes": ["fake_review"],
+      "template": "안녕하세요, 쿠팡 판매자 지원팀 담당자님.\n\n{issue_summary} 관련하여 소명드립니다.\n\n신고된 리뷰들은 실제 구매 고객분들이 자발적으로 작성하신 것으로, 조작에 해당하지 않습니다.\n\n1. 해당 리뷰 작성자: 모두 실제 구매자\n2. 리뷰 이벤트: {event_info_if_any}\n\n첨부 자료를 확인해 주시기 바랍니다.\n\n감사합니다.\n{seller_name} 드림"
+    },
+    {
+      "id": "ad_correction",
+      "name": "광고 수정 확인서",
+      "response_type": "statement",
+      "for_subtypes": ["false_advertising"],
+      "template": "안녕하세요, 쿠팡 판매자 지원팀 담당자님.\n\n{issue_summary} 관련 안내 확인하였습니다.\n\n지적해 주신 표현을 다음과 같이 수정 완료하였습니다.\n\n수정 전: {before_text}\n수정 후: {after_text}\n\n향후 광고 표현에 더욱 주의하겠습니다.\n\n감사합니다.\n{seller_name} 드림"
+    },
+    {
+      "id": "complaint_resolution",
+      "name": "민원 해결 보고서",
+      "response_type": "statement",
+      "for_subtypes": ["customer_complaint", "return_dispute"],
+      "template": "안녕하세요, 쿠팡 판매자 지원팀 담당자님.\n\n{issue_summary} 관련하여 해결 내용을 보고드립니다.\n\n1. 고객 불만 내용: {complaint_summary}\n2. 원인 분석: {cause_analysis}\n3. 해결 조치: {resolution}\n4. 재발 방지: {prevention}\n\n고객분께는 직접 연락드려 사과 및 보상 완료하였습니다.\n\n감사합니다.\n{seller_name} 드림"
+    }
+  ],
+  "common_mistakes": [
+    "고객 탓만 하고 자기 잘못 인정 안함",
+    "대응 지연으로 문제 확대",
+    "감정적 대응",
+    "증빙 없는 주장"
+  ],
+  "legal_references": [
+    "전자상거래법 제17조 (청약철회)",
+    "표시광고법 제3조 (부당한 표시광고 금지)",
+    "소비자기본법 관련 조항"
+  ]
+}

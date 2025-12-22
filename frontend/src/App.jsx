@@ -14,6 +14,7 @@ import NaverReviewManagement from './components/NaverReviewManagement'
 import NaverPayDelivery from './components/NaverPayDelivery'
 import ProductSearch from './components/ProductSearch'
 import UploadMonitoring from './components/UploadMonitoring'
+import IssueResponseManager from './components/IssueResponseManager'
 import ServerConnection from './components/ServerConnection'
 import { X, CheckCircle, AlertCircle } from 'lucide-react'
 import { getApiBaseUrl } from './utils/apiConfig'
@@ -230,6 +231,21 @@ function AppContent() {
               transition={{ duration: 0.3 }}
             >
               <ReturnManagement
+                apiBaseUrl={apiBaseUrl}
+                showNotification={showNotification}
+              />
+            </motion.div>
+          )}
+
+          {activeTab === 'issue-response' && (
+            <motion.div
+              key="issue-response"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <IssueResponseManager
                 apiBaseUrl={apiBaseUrl}
                 showNotification={showNotification}
               />
