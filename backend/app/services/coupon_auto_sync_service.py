@@ -1136,16 +1136,42 @@ class CouponAutoSyncService:
         contract_end_date = None
         try:
             contracts_response = client.get_contract_list()
-            if contracts_response and "data" in contracts_response:
-                for contract in contracts_response["data"]:
-                    if contract.get("contractId") == config.contract_id:
-                        contract_end_str = contract.get("end")
-                        if contract_end_str:
-                            contract_end_date = datetime.strptime(contract_end_str, "%Y-%m-%d %H:%M:%S")
-                            logger.info(f"[AUTO-CREATE] Contract {config.contract_id} ends at: {contract_end_date}")
-                        break
+            logger.info(f"[AUTO-CREATE] Contract API response: code={contracts_response.get('code')}")
+
+            # API 응답 구조: {"code": 200, "data": {"content": [...]}}
+            if contracts_response and contracts_response.get("code") == 200:
+                contracts_data = contracts_response.get("data", {})
+                contracts_list = contracts_data.get("content", []) if isinstance(contracts_data, dict) else []
+
+                logger.info(f"[AUTO-CREATE] Found {len(contracts_list)} contracts")
+
+                for contract in contracts_list:
+                    if isinstance(contract, dict):
+                        # contractId는 정수 또는 문자열일 수 있음
+                        contract_id_in_response = contract.get("contractId")
+                        config_contract_id = config.contract_id
+
+                        # 타입 변환하여 비교
+                        try:
+                            if int(contract_id_in_response) == int(config_contract_id):
+                                contract_end_str = contract.get("end")
+                                if contract_end_str:
+                                    contract_end_date = datetime.strptime(contract_end_str, "%Y-%m-%d %H:%M:%S")
+                                    logger.info(f"[AUTO-CREATE] Contract {config.contract_id} ends at: {contract_end_date}")
+                                break
+                        except (ValueError, TypeError):
+                            logger.warning(f"[AUTO-CREATE] Contract ID comparison failed: {contract_id_in_response} vs {config_contract_id}")
+                            continue
+
+                if not contract_end_date:
+                    logger.warning(f"[AUTO-CREATE] Contract {config.contract_id} not found in {len(contracts_list)} contracts")
         except Exception as e:
-            logger.warning(f"[AUTO-CREATE] Failed to get contract info: {e}")
+            logger.warning(f"[AUTO-CREATE] Failed to get contract info: {e}", exc_info=True)
+
+        # 계약서 종료일을 찾지 못한 경우 안전한 기본값 사용 (90일)
+        if not contract_end_date:
+            logger.warning(f"[AUTO-CREATE] Using safe default duration: 90 days instead of {duration_days}")
+            duration_days = min(duration_days, 90)
 
         # 배치별로 새 쿠폰 생성
         batch_count = 0
@@ -1168,6 +1194,7 @@ class CouponAutoSyncService:
                         logger.info(f"[AUTO-CREATE] Adjusted coupon end date to contract end: {desired_end}")
 
                 end_date = desired_end.strftime("%Y-%m-%d %H:%M:%S")
+                logger.info(f"[AUTO-CREATE] Coupon period: {start_date} ~ {end_date}")
 
                 # 쿠폰 제목 (배치 번호 포함)
                 coupon_title = f"{title_template} #{batch_count}"
@@ -1243,16 +1270,42 @@ class CouponAutoSyncService:
         contract_end_date = None
         try:
             contracts_response = client.get_contract_list()
-            if contracts_response and "data" in contracts_response:
-                for contract in contracts_response["data"]:
-                    if contract.get("contractId") == config.contract_id:
-                        contract_end_str = contract.get("end")
-                        if contract_end_str:
-                            contract_end_date = datetime.strptime(contract_end_str, "%Y-%m-%d %H:%M:%S")
-                            logger.info(f"[INSTANT-AUTO] Contract {config.contract_id} ends at: {contract_end_date}")
-                        break
+            logger.info(f"[INSTANT-AUTO] Contract API response: code={contracts_response.get('code')}")
+
+            # API 응답 구조: {"code": 200, "data": {"content": [...]}}
+            if contracts_response and contracts_response.get("code") == 200:
+                contracts_data = contracts_response.get("data", {})
+                contracts_list = contracts_data.get("content", []) if isinstance(contracts_data, dict) else []
+
+                logger.info(f"[INSTANT-AUTO] Found {len(contracts_list)} contracts")
+
+                for contract in contracts_list:
+                    if isinstance(contract, dict):
+                        # contractId는 정수 또는 문자열일 수 있음
+                        contract_id_in_response = contract.get("contractId")
+                        config_contract_id = config.contract_id
+
+                        # 타입 변환하여 비교
+                        try:
+                            if int(contract_id_in_response) == int(config_contract_id):
+                                contract_end_str = contract.get("end")
+                                if contract_end_str:
+                                    contract_end_date = datetime.strptime(contract_end_str, "%Y-%m-%d %H:%M:%S")
+                                    logger.info(f"[INSTANT-AUTO] Contract {config.contract_id} ends at: {contract_end_date}")
+                                break
+                        except (ValueError, TypeError):
+                            logger.warning(f"[INSTANT-AUTO] Contract ID comparison failed: {contract_id_in_response} vs {config_contract_id}")
+                            continue
+
+                if not contract_end_date:
+                    logger.warning(f"[INSTANT-AUTO] Contract {config.contract_id} not found in {len(contracts_list)} contracts")
         except Exception as e:
-            logger.warning(f"[INSTANT-AUTO] Failed to get contract info: {e}")
+            logger.warning(f"[INSTANT-AUTO] Failed to get contract info: {e}", exc_info=True)
+
+        # 계약서 종료일을 찾지 못한 경우 안전한 기본값 사용 (90일)
+        if not contract_end_date:
+            logger.warning(f"[INSTANT-AUTO] Using safe default duration: 90 days instead of {duration_days}")
+            duration_days = min(duration_days, 90)
 
         # 배치별로 새 쿠폰 생성
         batch_count = 0
@@ -1276,6 +1329,7 @@ class CouponAutoSyncService:
                         logger.info(f"[INSTANT-AUTO] Adjusted coupon end date to contract end: {desired_end}")
 
                 end_at = desired_end.strftime("%Y-%m-%d %H:%M:%S")
+                logger.info(f"[INSTANT-AUTO] Coupon period: {start_at} ~ {end_at}")
 
                 # 쿠폰 제목 (배치 번호 포함, 최대 45자)
                 coupon_name = f"{title_template} #{batch_count}"[:45]
