@@ -13,21 +13,10 @@ import ChatGPTStatus from './ChatGPTStatus'
 import CoupangWingAutomation from './CoupangWingAutomation'
 import TutorialButton from './TutorialButton'
 import AutoModePanel from './AutoModePanel'
-import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts'
 import '../styles/Dashboard.css'
 
 const Dashboard = ({ stats, automationStats, apiBaseUrl }) => {
-  // 샘플 차트 데이터
-  const weeklyData = [
-    { name: '월', 문의: 45, 처리: 42 },
-    { name: '화', 문의: 52, 처리: 50 },
-    { name: '수', 문의: 38, 처리: 36 },
-    { name: '목', 문의: 65, 처리: 63 },
-    { name: '금', 문의: 58, 처리: 55 },
-    { name: '토', 문의: 28, 처리: 27 },
-    { name: '일', 문의: 22, 처리: 21 },
-  ]
-
   const automationData = [
     { name: '자동 승인', value: automationStats?.auto_approval_rate || 0, color: '#10b981' },
     { name: '수동 검토', value: 100 - (automationStats?.auto_approval_rate || 0), color: '#f59e0b' },
@@ -42,7 +31,7 @@ const Dashboard = ({ stats, automationStats, apiBaseUrl }) => {
         </div>
         <div className="dashboard-status">
           <div className="status-dot"></div>
-          <span>백엔드 연결 성공 ✅ | 시스템 정상 작동 중</span>
+          <span>백엔드 연결 성공 | 시스템 정상 작동 중</span>
         </div>
       </div>
 
@@ -56,8 +45,6 @@ const Dashboard = ({ stats, automationStats, apiBaseUrl }) => {
             title="대기 중인 문의"
             value={stats.inquiries?.pending || 0}
             icon={Inbox}
-            trend="up"
-            trendValue={12}
             color="blue"
             delay={0}
           />
@@ -65,8 +52,6 @@ const Dashboard = ({ stats, automationStats, apiBaseUrl }) => {
             title="처리 완료"
             value={stats.inquiries?.processed || 0}
             icon={CheckCircle}
-            trend="up"
-            trendValue={8}
             color="green"
             delay={0.1}
           />
@@ -74,8 +59,6 @@ const Dashboard = ({ stats, automationStats, apiBaseUrl }) => {
             title="승인 대기"
             value={stats.submissions?.pending_submission || 0}
             icon={Clock}
-            trend="down"
-            trendValue={5}
             color="orange"
             delay={0.2}
           />
@@ -83,8 +66,6 @@ const Dashboard = ({ stats, automationStats, apiBaseUrl }) => {
             title="제출 완료"
             value={stats.submissions?.submission_success || 0}
             icon={Send}
-            trend="up"
-            trendValue={15}
             color="purple"
             delay={0.3}
           />
@@ -164,72 +145,6 @@ const Dashboard = ({ stats, automationStats, apiBaseUrl }) => {
           <ChatGPTStatus />
         </div>
       )}
-
-      {/* Charts */}
-      <div className="charts-grid">
-        <motion.div
-          className="chart-card"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-        >
-          <h3 className="chart-title">주간 문의 처리 현황</h3>
-          <div className="chart-container">
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={weeklyData}>
-                <defs>
-                  <linearGradient id="colorInquiry" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorProcessed" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-                <XAxis dataKey="name" stroke="var(--text-secondary)" />
-                <YAxis stroke="var(--text-secondary)" />
-                <Tooltip
-                  contentStyle={{
-                    background: 'var(--card-bg)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '8px'
-                  }}
-                />
-                <Area type="monotone" dataKey="문의" stroke="#3b82f6" fillOpacity={1} fill="url(#colorInquiry)" strokeWidth={2} />
-                <Area type="monotone" dataKey="처리" stroke="#10b981" fillOpacity={1} fill="url(#colorProcessed)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </motion.div>
-
-        <motion.div
-          className="chart-card"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7 }}
-        >
-          <h3 className="chart-title">시간대별 문의량</h3>
-          <div className="chart-container">
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={weeklyData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-                <XAxis dataKey="name" stroke="var(--text-secondary)" />
-                <YAxis stroke="var(--text-secondary)" />
-                <Tooltip
-                  contentStyle={{
-                    background: 'var(--card-bg)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '8px'
-                  }}
-                />
-                <Bar dataKey="문의" fill="#8b5cf6" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </motion.div>
-      </div>
 
       {/* Coupang Wing Automation */}
       <CoupangWingAutomation apiBaseUrl={apiBaseUrl} />
