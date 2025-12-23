@@ -5,10 +5,254 @@ Auto Mode Service - 실시간 자동모드 통합 서비스
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 from loguru import logger
+import threading
+import uuid
+import time
 
 from .coupang_api_client import CoupangAPIClient
 from .ai_response_generator import AIResponseGenerator
 from ..models import CoupangAccount
+
+
+# 전역 세션 관리자
+class AutoModeSessionManager:
+    """자동모드 세션 관리자 - 싱글톤"""
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self):
+        if self._initialized:
+            return
+        self._initialized = True
+        self.sessions: Dict[str, Dict] = {}
+        self.threads: Dict[str, threading.Thread] = {}
+        self._stop_flags: Dict[str, threading.Event] = {}
+        logger.info("AutoModeSessionManager 초기화됨")
+
+    def create_session(
+        self,
+        account_id: int,
+        account_name: str,
+        vendor_id: str,
+        interval_minutes: int,
+        inquiry_types: List[str],
+        account: CoupangAccount
+    ) -> str:
+        """새 자동모드 세션 생성"""
+        session_id = str(uuid.uuid4())[:8]
+
+        self.sessions[session_id] = {
+            "session_id": session_id,
+            "account_id": account_id,
+            "account_name": account_name,
+            "vendor_id": vendor_id,
+            "interval_minutes": interval_minutes,
+            "inquiry_types": inquiry_types,
+            "status": "running",
+            "created_at": datetime.now().isoformat(),
+            "last_run": None,
+            "next_run": datetime.now().isoformat(),
+            "stats": {
+                "total_collected": 0,
+                "total_answered": 0,
+                "total_submitted": 0,
+                "total_confirmed": 0,
+                "total_failed": 0,
+                "run_count": 0
+            },
+            "recent_logs": [],
+            "account": account  # 계정 정보 저장 (스레드에서 사용)
+        }
+
+        # 중지 플래그 생성
+        self._stop_flags[session_id] = threading.Event()
+
+        # 백그라운드 스레드 시작
+        thread = threading.Thread(
+            target=self._run_session_loop,
+            args=(session_id,),
+            daemon=True
+        )
+        self.threads[session_id] = thread
+        thread.start()
+
+        logger.info(f"자동모드 세션 생성됨: {session_id} (계정: {account_name})")
+        return session_id
+
+    def _run_session_loop(self, session_id: str):
+        """세션 실행 루프 (백그라운드 스레드)"""
+        service = AutoModeService()
+        stop_flag = self._stop_flags.get(session_id)
+
+        while not stop_flag.is_set():
+            session = self.sessions.get(session_id)
+            if not session or session["status"] != "running":
+                break
+
+            try:
+                account = session["account"]
+                inquiry_types = session["inquiry_types"]
+
+                # 실행 로그 추가
+                self._add_log(session_id, "자동 수집 시작...", "info")
+
+                # 사이클 실행
+                result = service.run_full_cycle(
+                    account=account,
+                    inquiry_types=inquiry_types,
+                    auto_submit=True,
+                    wing_id=account.wing_username or account.vendor_id or "auto"
+                )
+
+                # 통계 업데이트
+                session["stats"]["total_collected"] += result.get("collected", 0)
+                session["stats"]["total_answered"] += result.get("answered", 0)
+                session["stats"]["total_submitted"] += result.get("submitted", 0)
+                session["stats"]["total_confirmed"] += result.get("details", {}).get("callcenter", {}).get("confirmed", 0)
+                session["stats"]["total_failed"] += result.get("failed", 0)
+                session["stats"]["run_count"] += 1
+
+                # 실행 시간 업데이트
+                session["last_run"] = datetime.now().isoformat()
+                next_run = datetime.now() + timedelta(minutes=session["interval_minutes"])
+                session["next_run"] = next_run.isoformat()
+
+                # 결과 로그
+                collected = result.get("collected", 0)
+                submitted = result.get("submitted", 0)
+                confirmed = result.get("details", {}).get("callcenter", {}).get("confirmed", 0)
+
+                if collected == 0:
+                    self._add_log(session_id, "처리할 미답변 문의가 없습니다", "info")
+                else:
+                    log_msg = f"수집: {collected}, 제출: {submitted}"
+                    if confirmed > 0:
+                        log_msg += f", 확인완료: {confirmed}"
+                    self._add_log(session_id, log_msg, "success")
+
+            except Exception as e:
+                logger.error(f"세션 {session_id} 실행 오류: {str(e)}")
+                self._add_log(session_id, f"오류: {str(e)}", "error")
+
+            # 다음 실행까지 대기 (1초 단위로 체크하여 빠른 중지 가능)
+            interval_seconds = session["interval_minutes"] * 60
+            for _ in range(interval_seconds):
+                if stop_flag.is_set():
+                    break
+                time.sleep(1)
+
+        logger.info(f"세션 {session_id} 루프 종료")
+
+    def _add_log(self, session_id: str, message: str, log_type: str = "info"):
+        """세션에 로그 추가"""
+        session = self.sessions.get(session_id)
+        if session:
+            log_entry = {
+                "time": datetime.now().strftime("%H:%M:%S"),
+                "message": message,
+                "type": log_type
+            }
+            session["recent_logs"].insert(0, log_entry)
+            session["recent_logs"] = session["recent_logs"][:20]  # 최근 20개만 유지
+
+    def stop_session(self, session_id: str) -> bool:
+        """세션 중지"""
+        if session_id not in self.sessions:
+            return False
+
+        # 중지 플래그 설정
+        if session_id in self._stop_flags:
+            self._stop_flags[session_id].set()
+
+        # 상태 업데이트
+        self.sessions[session_id]["status"] = "stopped"
+        self._add_log(session_id, "자동모드가 중지되었습니다", "info")
+
+        logger.info(f"세션 {session_id} 중지됨")
+        return True
+
+    def start_session(self, session_id: str) -> bool:
+        """중지된 세션 재시작"""
+        if session_id not in self.sessions:
+            return False
+
+        session = self.sessions[session_id]
+        if session["status"] == "running":
+            return True  # 이미 실행 중
+
+        # 새 중지 플래그 생성
+        self._stop_flags[session_id] = threading.Event()
+        session["status"] = "running"
+
+        # 새 스레드 시작
+        thread = threading.Thread(
+            target=self._run_session_loop,
+            args=(session_id,),
+            daemon=True
+        )
+        self.threads[session_id] = thread
+        thread.start()
+
+        self._add_log(session_id, "자동모드가 재시작되었습니다", "success")
+        logger.info(f"세션 {session_id} 재시작됨")
+        return True
+
+    def delete_session(self, session_id: str) -> bool:
+        """세션 삭제"""
+        if session_id not in self.sessions:
+            return False
+
+        # 먼저 중지
+        self.stop_session(session_id)
+
+        # 세션 제거
+        del self.sessions[session_id]
+        if session_id in self._stop_flags:
+            del self._stop_flags[session_id]
+        if session_id in self.threads:
+            del self.threads[session_id]
+
+        logger.info(f"세션 {session_id} 삭제됨")
+        return True
+
+    def get_session(self, session_id: str) -> Optional[Dict]:
+        """세션 정보 조회"""
+        session = self.sessions.get(session_id)
+        if session:
+            # account 객체는 직렬화 불가하므로 제외
+            return {k: v for k, v in session.items() if k != "account"}
+        return None
+
+    def get_all_sessions(self) -> List[Dict]:
+        """모든 세션 목록 조회"""
+        result = []
+        for session_id, session in self.sessions.items():
+            # account 객체는 직렬화 불가하므로 제외
+            session_data = {k: v for k, v in session.items() if k != "account"}
+            result.append(session_data)
+        return result
+
+    def get_sessions_by_account(self, account_id: int) -> List[Dict]:
+        """특정 계정의 세션 목록 조회"""
+        result = []
+        for session_id, session in self.sessions.items():
+            if session["account_id"] == account_id:
+                session_data = {k: v for k, v in session.items() if k != "account"}
+                result.append(session_data)
+        return result
+
+
+# 싱글톤 인스턴스 getter
+def get_session_manager() -> AutoModeSessionManager:
+    return AutoModeSessionManager()
 
 
 class AutoModeService:

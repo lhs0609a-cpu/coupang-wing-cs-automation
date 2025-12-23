@@ -10,7 +10,7 @@ from datetime import datetime
 from loguru import logger
 
 from ..database import get_db
-from ..services.auto_mode_service import AutoModeService
+from ..services.auto_mode_service import AutoModeService, get_session_manager
 from ..models import CoupangAccount
 
 router = APIRouter(prefix="/auto-mode", tags=["auto-mode"])
@@ -37,29 +37,142 @@ class AutoModeCycleResponse(BaseModel):
     executed_at: datetime
 
 
+class CreateSessionRequest(BaseModel):
+    """세션 생성 요청"""
+    account_id: int
+    interval_minutes: int = 5
+    inquiry_types: List[str] = ["online", "callcenter"]
+
+
+class SessionResponse(BaseModel):
+    """세션 정보 응답"""
+    session_id: str
+    account_id: int
+    account_name: str
+    vendor_id: str
+    interval_minutes: int
+    inquiry_types: List[str]
+    status: str
+    created_at: str
+    last_run: Optional[str]
+    next_run: Optional[str]
+    stats: dict
+    recent_logs: List[dict]
+
+
+# ============== 세션 관리 API ==============
+
+@router.post("/sessions", response_model=SessionResponse)
+def create_session(
+    request: CreateSessionRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    새 자동모드 세션 생성 및 시작
+
+    백그라운드에서 주기적으로 실행됩니다.
+    화면을 닫아도 계속 실행됩니다.
+    """
+    logger.info(f"세션 생성 요청 - 계정 ID: {request.account_id}")
+
+    # 계정 확인
+    account = db.query(CoupangAccount).filter(
+        CoupangAccount.id == request.account_id
+    ).first()
+
+    if not account:
+        raise HTTPException(status_code=404, detail="계정을 찾을 수 없습니다")
+
+    if not account.access_key or not account.secret_key or not account.vendor_id:
+        raise HTTPException(
+            status_code=400,
+            detail="계정의 API 인증 정보가 불완전합니다"
+        )
+
+    # 세션 관리자에서 세션 생성
+    manager = get_session_manager()
+    session_id = manager.create_session(
+        account_id=account.id,
+        account_name=account.name,
+        vendor_id=account.vendor_id,
+        interval_minutes=request.interval_minutes,
+        inquiry_types=request.inquiry_types,
+        account=account
+    )
+
+    session = manager.get_session(session_id)
+    return session
+
+
+@router.get("/sessions", response_model=List[SessionResponse])
+def get_all_sessions():
+    """모든 실행 중인 자동모드 세션 목록 조회"""
+    manager = get_session_manager()
+    return manager.get_all_sessions()
+
+
+@router.get("/sessions/{session_id}", response_model=SessionResponse)
+def get_session(session_id: str):
+    """특정 세션 정보 조회"""
+    manager = get_session_manager()
+    session = manager.get_session(session_id)
+
+    if not session:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+
+    return session
+
+
+@router.post("/sessions/{session_id}/stop")
+def stop_session(session_id: str):
+    """세션 중지"""
+    manager = get_session_manager()
+
+    if manager.stop_session(session_id):
+        return {"success": True, "message": "세션이 중지되었습니다"}
+    else:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+
+
+@router.post("/sessions/{session_id}/start")
+def start_session(session_id: str):
+    """중지된 세션 재시작"""
+    manager = get_session_manager()
+
+    if manager.start_session(session_id):
+        return {"success": True, "message": "세션이 시작되었습니다"}
+    else:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+
+
+@router.delete("/sessions/{session_id}")
+def delete_session(session_id: str):
+    """세션 삭제"""
+    manager = get_session_manager()
+
+    if manager.delete_session(session_id):
+        return {"success": True, "message": "세션이 삭제되었습니다"}
+    else:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+
+
+# ============== 기존 단일 사이클 API ==============
+
 @router.post("/cycle", response_model=AutoModeCycleResponse)
 def run_auto_cycle(
     request: AutoModeCycleRequest,
     db: Session = Depends(get_db)
 ):
     """
-    자동모드 단일 사이클 실행
+    자동모드 단일 사이클 실행 (세션 없이 1회 실행)
 
     1. 선택된 계정으로 미답변 문의 수집 (online + callcenter)
     2. AI 답변 생성
     3. 자동 제출
-
-    Args:
-        request: 사이클 실행 요청 정보
-        db: 데이터베이스 세션
-
-    Returns:
-        사이클 실행 결과
     """
     logger.info(f"자동모드 사이클 시작 - 계정 ID: {request.account_id}")
 
     try:
-        # 계정 확인
         account = db.query(CoupangAccount).filter(
             CoupangAccount.id == request.account_id
         ).first()
@@ -67,14 +180,12 @@ def run_auto_cycle(
         if not account:
             raise HTTPException(status_code=404, detail="계정을 찾을 수 없습니다")
 
-        # 계정 정보 유효성 확인
         if not account.access_key or not account.secret_key or not account.vendor_id:
             raise HTTPException(
                 status_code=400,
                 detail="계정의 API 인증 정보가 불완전합니다"
             )
 
-        # 자동모드 서비스 실행
         service = AutoModeService()
         result = service.run_full_cycle(
             account=account,
@@ -120,15 +231,16 @@ def run_auto_cycle(
 
 @router.get("/status")
 def get_auto_mode_status():
-    """
-    자동모드 상태 조회
+    """자동모드 상태 조회"""
+    manager = get_session_manager()
+    sessions = manager.get_all_sessions()
+    running_count = sum(1 for s in sessions if s["status"] == "running")
 
-    Returns:
-        서버 상태 정보
-    """
     return {
         "status": "ready",
         "message": "자동모드 API가 정상 작동 중입니다",
+        "active_sessions": running_count,
+        "total_sessions": len(sessions),
         "timestamp": datetime.utcnow().isoformat()
     }
 
@@ -138,18 +250,8 @@ def test_account_connection(
     account_id: int,
     db: Session = Depends(get_db)
 ):
-    """
-    계정 연결 테스트
-
-    Args:
-        account_id: 테스트할 계정 ID
-        db: 데이터베이스 세션
-
-    Returns:
-        연결 테스트 결과
-    """
+    """계정 연결 테스트"""
     try:
-        # 계정 조회
         account = db.query(CoupangAccount).filter(
             CoupangAccount.id == account_id
         ).first()
@@ -157,9 +259,8 @@ def test_account_connection(
         if not account:
             raise HTTPException(status_code=404, detail="계정을 찾을 수 없습니다")
 
-        # API 클라이언트로 간단한 테스트
         from ..services.coupang_api_client import CoupangAPIClient
-        from datetime import datetime, timedelta
+        from datetime import timedelta
 
         client = CoupangAPIClient(
             access_key=account.access_key,
@@ -167,7 +268,6 @@ def test_account_connection(
             vendor_id=account.vendor_id
         )
 
-        # 오늘 날짜로 문의 조회 테스트
         end_date = datetime.now().strftime('%Y-%m-%d')
         start_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
 
