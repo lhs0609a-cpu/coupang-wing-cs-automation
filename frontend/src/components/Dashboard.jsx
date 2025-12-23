@@ -12,6 +12,7 @@ import StatCard from './StatCard'
 import ChatGPTStatus from './ChatGPTStatus'
 import CoupangWingAutomation from './CoupangWingAutomation'
 import TutorialButton from './TutorialButton'
+import AutoModePanel from './AutoModePanel'
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import '../styles/Dashboard.css'
 
@@ -44,6 +45,9 @@ const Dashboard = ({ stats, automationStats, apiBaseUrl }) => {
           <span>백엔드 연결 성공 ✅ | 시스템 정상 작동 중</span>
         </div>
       </div>
+
+      {/* Auto Mode Panel */}
+      <AutoModePanel apiBaseUrl={apiBaseUrl} />
 
       {/* Stats Grid */}
       {stats && (
