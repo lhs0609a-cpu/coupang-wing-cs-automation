@@ -164,9 +164,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             "/api/returns/list",            # Returns list
             "/api/accounts",                # Account endpoints
             "/api/naver",                   # Naver account endpoints
+            "/api/coupang-accounts",        # Coupang account endpoints
+            "/api/auto-mode",               # Auto mode endpoints
         ]
 
     async def dispatch(self, request: Request, call_next):
+        # Skip rate limiting for OPTIONS (CORS preflight) requests
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         # Skip rate limiting for excluded paths
         if any(request.url.path.startswith(path) for path in self.excluded_paths):
             return await call_next(request)
