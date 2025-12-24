@@ -1,9 +1,10 @@
 .coupang-wing-automation {
-  background: white;
+  background: var(--card-bg);
   border-radius: 16px;
   padding: 24px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 6px var(--shadow-color);
   margin-top: 24px;
+  border: 1px solid var(--border-color);
 }
 
 .automation-header {
@@ -25,12 +26,12 @@
   margin: 0;
   font-size: 1.5rem;
   font-weight: 600;
-  color: #1a202c;
+  color: var(--text-primary);
 }
 
 .header-subtitle {
   margin: 0;
-  color: #718096;
+  color: var(--text-secondary);
   font-size: 0.95rem;
   margin-left: 36px;
 }
@@ -48,12 +49,12 @@
   margin: 0 0 12px 0;
   font-size: 1.1rem;
   font-weight: 600;
-  color: #2d3748;
+  color: var(--text-primary);
 }
 
 .section-description {
   margin: 0 0 16px 0;
-  color: #718096;
+  color: var(--text-secondary);
   font-size: 0.9rem;
 }
 
@@ -78,18 +79,20 @@
 .input-icon {
   position: absolute;
   left: 12px;
-  color: #a0aec0;
+  color: var(--text-secondary);
   pointer-events: none;
 }
 
 .input-field {
   width: 100%;
   padding: 12px 12px 12px 40px;
-  border: 2px solid #e2e8f0;
+  border: 2px solid var(--border-color);
   border-radius: 8px;
   font-size: 1rem;
   transition: all 0.2s;
   outline: none;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 .input-field:focus {
@@ -98,8 +101,9 @@
 }
 
 .input-field:disabled {
-  background: #f7fafc;
+  background: var(--bg-primary);
   cursor: not-allowed;
+  opacity: 0.7;
 }
 
 /* 옵션 섹션 */
@@ -109,7 +113,7 @@
   gap: 8px;
   cursor: pointer;
   font-size: 1rem;
-  color: #2d3748;
+  color: var(--text-primary);
 }
 
 .checkbox-label input[type="checkbox"] {
@@ -194,12 +198,12 @@
 }
 
 .result-box.success {
-  background: #f0fdf4;
+  background: var(--success-bg, #f0fdf4);
   border-color: #10b981;
 }
 
 .result-box.error {
-  background: #fef2f2;
+  background: var(--error-bg, #fef2f2);
   border-color: #ef4444;
 }
 
@@ -225,16 +229,16 @@
 }
 
 .result-box.success .result-header h4 {
-  color: #065f46;
+  color: var(--success-text, #065f46);
 }
 
 .result-box.error .result-header h4 {
-  color: #991b1b;
+  color: var(--error-text, #991b1b);
 }
 
 .result-message {
   margin: 0 0 16px 36px;
-  color: #374151;
+  color: var(--text-primary);
   font-size: 1rem;
 }
 
@@ -251,21 +255,21 @@
   flex-direction: column;
   align-items: center;
   padding: 12px;
-  background: white;
+  background: var(--bg-secondary);
   border-radius: 8px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border-color);
 }
 
 .stat-label {
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--text-secondary);
   margin-bottom: 4px;
 }
 
 .stat-value {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--text-primary);
 }
 
 .stat-value.success {
@@ -278,7 +282,7 @@
 
 /* 안내 섹션 */
 .info-section {
-  background: #f8fafc;
+  background: var(--bg-secondary);
   padding: 16px;
   border-radius: 12px;
   border-left: 4px solid #667eea;
@@ -287,7 +291,7 @@
 .process-list {
   margin: 12px 0 0 0;
   padding-left: 24px;
-  color: #4a5568;
+  color: var(--text-secondary);
 }
 
 .process-list li {
@@ -356,20 +360,20 @@
 }
 
 .login-success-message {
-  background: #d1fae5;
-  color: #065f46;
+  background: var(--success-bg, #d1fae5);
+  color: var(--success-text, #065f46);
   border: 1px solid #10b981;
 }
 
 .login-failed-message {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--error-bg, #fee2e2);
+  color: var(--error-text, #991b1b);
   border: 1px solid #ef4444;
 }
 
 /* 2단계 섹션 */
 .automation-section {
-  border-top: 2px dashed #e2e8f0;
+  border-top: 2px dashed var(--border-color);
   padding-top: 24px;
   margin-top: 8px;
 }
@@ -378,20 +382,20 @@
   margin: 0 0 12px 0;
   font-size: 1.1rem;
   font-weight: 600;
-  color: #2d3748;
+  color: var(--text-primary);
 }
 
 .option-note {
   margin: 8px 0 0 0;
-  color: #718096;
+  color: var(--text-secondary);
   font-size: 0.85rem;
   line-height: 1.6;
 }
 
 /* 실시간 진행 로그 */
 .progress-logs-container {
-  background: #f8fafc;
-  border: 2px solid #e2e8f0;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-color);
   border-radius: 12px;
   padding: 16px;
   margin-top: 24px;
@@ -404,7 +408,7 @@
   align-items: center;
   margin-bottom: 12px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .progress-header h4 {
@@ -414,25 +418,25 @@
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
-  color: #2d3748;
+  color: var(--text-primary);
 }
 
 .clear-logs-btn {
   padding: 6px 12px;
   background: transparent;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   font-size: 0.85rem;
   font-weight: 500;
-  color: #718096;
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .clear-logs-btn:hover:not(:disabled) {
-  background: white;
-  color: #2d3748;
-  border-color: #cbd5e0;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  border-color: var(--border-color);
 }
 
 .clear-logs-btn:disabled {
@@ -453,24 +457,24 @@
   align-items: flex-start;
   gap: 12px;
   padding: 10px 12px;
-  background: white;
+  background: var(--card-bg);
   border-radius: 6px;
   font-size: 0.9rem;
   line-height: 1.5;
-  border-left: 3px solid #e2e8f0;
+  border-left: 3px solid var(--border-color);
 }
 
 .log-timestamp {
   flex-shrink: 0;
   font-size: 0.8rem;
-  color: #a0aec0;
+  color: var(--text-muted, #a0aec0);
   font-family: 'Courier New', monospace;
   min-width: 70px;
 }
 
 .log-message {
   flex: 1;
-  color: #2d3748;
+  color: var(--text-primary);
 }
 
 .log-entry.log-info {
@@ -479,31 +483,31 @@
 
 .log-entry.log-success {
   border-left-color: #10b981;
-  background: #f0fdf4;
+  background: var(--success-bg, #f0fdf4);
 }
 
 .log-entry.log-success .log-message {
-  color: #065f46;
+  color: var(--success-text, #065f46);
   font-weight: 500;
 }
 
 .log-entry.log-error {
   border-left-color: #ef4444;
-  background: #fef2f2;
+  background: var(--error-bg, #fef2f2);
 }
 
 .log-entry.log-error .log-message {
-  color: #991b1b;
+  color: var(--error-text, #991b1b);
   font-weight: 500;
 }
 
 .log-entry.log-warning {
   border-left-color: #f59e0b;
-  background: #fffbeb;
+  background: var(--warning-bg, #fffbeb);
 }
 
 .log-entry.log-warning .log-message {
-  color: #92400e;
+  color: var(--warning-text, #92400e);
 }
 
 .log-entry.log-loading {
@@ -526,17 +530,17 @@
 }
 
 .progress-logs::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: var(--bg-secondary);
   border-radius: 3px;
 }
 
 .progress-logs::-webkit-scrollbar-thumb {
-  background: #cbd5e0;
+  background: var(--border-color);
   border-radius: 3px;
 }
 
 .progress-logs::-webkit-scrollbar-thumb:hover {
-  background: #a0aec0;
+  background: var(--text-muted, #a0aec0);
 }
 
 /* ==================== 새로운 기능 스타일 ==================== */

@@ -16,6 +16,7 @@
   --border-color: rgba(255, 255, 255, 0.15);
   --text-primary: #ffffff;
   --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-muted: rgba(255, 255, 255, 0.5);
   --accent-color: #667eea;
   --accent-hover: #764ba2;
   --input-bg: #1a1a24;
@@ -25,6 +26,13 @@
   --select-option-bg: #1a1a24;
   --select-option-hover: #252532;
   --shadow-color: rgba(0, 0, 0, 0.3);
+  /* Status colors for dark mode */
+  --success-bg: rgba(16, 185, 129, 0.15);
+  --success-text: #34d399;
+  --error-bg: rgba(239, 68, 68, 0.15);
+  --error-text: #f87171;
+  --warning-bg: rgba(245, 158, 11, 0.15);
+  --warning-text: #fbbf24;
 }
 
 /* Light Theme */
@@ -38,6 +46,7 @@
   --border-color: #d1d5db;
   --text-primary: #1f2937;
   --text-secondary: #4b5563;
+  --text-muted: #9ca3af;
   --accent-color: #5b6fd6;
   --accent-hover: #6b4f9a;
   --input-bg: #ffffff;
@@ -47,6 +56,13 @@
   --select-option-bg: #ffffff;
   --select-option-hover: #f3f4f6;
   --shadow-color: rgba(0, 0, 0, 0.1);
+  /* Status colors for light mode */
+  --success-bg: #f0fdf4;
+  --success-text: #065f46;
+  --error-bg: #fef2f2;
+  --error-text: #991b1b;
+  --warning-bg: #fffbeb;
+  --warning-text: #92400e;
 }
 
 * {
