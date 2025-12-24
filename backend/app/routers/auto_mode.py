@@ -269,7 +269,7 @@ def test_account_connection(
         )
 
         end_date = datetime.now().strftime('%Y-%m-%d')
-        start_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+        start_date = (datetime.now() - timedelta(days=6)).strftime('%Y-%m-%d')  # API는 7일 이내만 허용
 
         result = client.get_online_inquiries(
             start_date=start_date,
