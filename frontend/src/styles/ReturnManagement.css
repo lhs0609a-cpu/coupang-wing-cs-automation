@@ -105,10 +105,10 @@
 }
 
 .filter-group select {
-  padding: 8px 12px;
+  padding: 8px 32px 8px 12px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  background: var(--bg-primary);
+  background: var(--bg-secondary);
   color: var(--text-primary);
   font-size: 14px;
   cursor: pointer;
@@ -119,6 +119,26 @@
   outline: none;
   border-color: var(--primary-color);
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+[data-theme="light"] .filters {
+  background: #ffffff;
+  border-color: #d1d5db;
+}
+
+[data-theme="light"] .filter-group select {
+  background: #ffffff;
+  border-color: #d1d5db;
+  color: #1f2937;
+}
+
+[data-theme="light"] .filter-group select:hover {
+  border-color: #9ca3af;
+}
+
+[data-theme="light"] .filter-group select:focus {
+  border-color: #5b6fd6;
+  box-shadow: 0 0 0 3px rgba(91, 111, 214, 0.1);
 }
 
 /* 반품 테이블 */
@@ -510,6 +530,37 @@
   outline: none;
   border-color: var(--primary-color);
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+[data-theme="light"] .form-group input,
+[data-theme="light"] .form-group select,
+[data-theme="light"] .form-group textarea {
+  background: #ffffff;
+  border-color: #d1d5db;
+  color: #1f2937;
+}
+
+[data-theme="light"] .form-group input::placeholder,
+[data-theme="light"] .form-group textarea::placeholder {
+  color: #9ca3af;
+}
+
+[data-theme="light"] .form-group input:hover,
+[data-theme="light"] .form-group select:hover,
+[data-theme="light"] .form-group textarea:hover {
+  border-color: #9ca3af;
+}
+
+[data-theme="light"] .form-group input:focus,
+[data-theme="light"] .form-group select:focus,
+[data-theme="light"] .form-group textarea:focus {
+  border-color: #5b6fd6;
+  box-shadow: 0 0 0 3px rgba(91, 111, 214, 0.1);
+}
+
+[data-theme="light"] .modal-content {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
 }
 
 .form-note {

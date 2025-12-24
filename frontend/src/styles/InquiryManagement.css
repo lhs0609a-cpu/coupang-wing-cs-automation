@@ -61,6 +61,7 @@
   background: var(--bg-secondary);
   border-radius: 12px;
   width: fit-content;
+  border: 1px solid var(--border-color);
 }
 
 .sub-tab {
@@ -85,8 +86,28 @@
 
 .sub-tab.active {
   background: var(--card-bg);
-  color: var(--primary-color);
+  color: var(--accent-color);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .sub-tabs {
+  background: #f3f4f6;
+  border-color: #e5e7eb;
+}
+
+[data-theme="light"] .sub-tab {
+  color: #6b7280;
+}
+
+[data-theme="light"] .sub-tab:hover {
+  background: #ffffff;
+  color: #1f2937;
+}
+
+[data-theme="light"] .sub-tab.active {
+  background: #ffffff;
+  color: #5b6fd6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .inquiry-controls {
@@ -128,6 +149,25 @@
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
+[data-theme="light"] .search-input {
+  background: #ffffff;
+  border-color: #d1d5db;
+  color: #1f2937;
+}
+
+[data-theme="light"] .search-input::placeholder {
+  color: #9ca3af;
+}
+
+[data-theme="light"] .search-input:hover {
+  border-color: #9ca3af;
+}
+
+[data-theme="light"] .search-input:focus {
+  border-color: #5b6fd6;
+  box-shadow: 0 0 0 3px rgba(91, 111, 214, 0.1);
+}
+
 .filter-group {
   display: flex;
   align-items: center;
@@ -143,14 +183,25 @@
 }
 
 .filter-select {
-  padding: 12px 8px;
-  background: transparent;
+  padding: 12px 32px 12px 12px;
+  background: var(--bg-secondary);
   border: none;
   color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   outline: none;
+  border-radius: 8px;
+}
+
+[data-theme="light"] .filter-select {
+  background: #ffffff;
+  color: #1f2937;
+}
+
+[data-theme="light"] .filter-group {
+  background: #ffffff;
+  border-color: #d1d5db;
 }
 
 .response-list {
@@ -799,12 +850,12 @@
 }
 
 .history-filter-select {
-  padding: 10px 16px;
+  padding: 10px 36px 10px 16px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
   font-size: 14px;
   font-weight: 600;
-  background: var(--bg-primary);
+  background: var(--bg-secondary);
   color: var(--text-primary);
   cursor: pointer;
 }
@@ -812,6 +863,21 @@
 .history-filter-select:focus {
   outline: none;
   border-color: #667eea;
+}
+
+[data-theme="light"] .history-filter-select {
+  background: #ffffff;
+  border-color: #d1d5db;
+  color: #1f2937;
+}
+
+[data-theme="light"] .history-filter-select:hover {
+  border-color: #9ca3af;
+}
+
+[data-theme="light"] .history-filter-select:focus {
+  border-color: #5b6fd6;
+  box-shadow: 0 0 0 3px rgba(91, 111, 214, 0.1);
 }
 
 .history-actions .btn-secondary {

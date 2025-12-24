@@ -10,10 +10,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 import json
 
-from app.database import get_db
-from app.models.delivery import NaverPayDelivery, NaverPaySchedule
-from app.services.naverpay_scraper import get_scraper, reset_scraper, scrape_logger
-from app.services.delivery_tracker import (
+from ..database import get_db
+from ..models.delivery import NaverPayDelivery, NaverPaySchedule
+from ..services.naverpay_scraper import get_scraper, reset_scraper, scrape_logger
+from ..services.delivery_tracker import (
     get_tracking_url,
     get_all_couriers,
     get_courier_name,
@@ -369,7 +369,7 @@ async def create_schedule(request: ScheduleRequest, db: Session = Depends(get_db
     """수집 스케줄 생성 (APScheduler 연동)"""
     try:
         import uuid
-        from app.scheduler import get_scheduler
+        from ..scheduler import get_scheduler
 
         job_id = f"naverpay_scrape_{uuid.uuid4().hex[:8]}"
 
@@ -417,7 +417,7 @@ async def create_schedule(request: ScheduleRequest, db: Session = Depends(get_db
 async def list_schedules(db: Session = Depends(get_db)):
     """스케줄 목록 조회 (APScheduler 상태 포함)"""
     try:
-        from app.scheduler import get_scheduler
+        from ..scheduler import get_scheduler
 
         # DB에서 스케줄 조회
         db_schedules = db.query(NaverPaySchedule).all()
@@ -450,7 +450,7 @@ async def list_schedules(db: Session = Depends(get_db)):
 async def delete_schedule(job_id: str, db: Session = Depends(get_db)):
     """스케줄 삭제 (APScheduler에서도 제거)"""
     try:
-        from app.scheduler import get_scheduler
+        from ..scheduler import get_scheduler
 
         schedule = db.query(NaverPaySchedule).filter(
             NaverPaySchedule.job_id == job_id
@@ -480,7 +480,7 @@ async def delete_schedule(job_id: str, db: Session = Depends(get_db)):
 async def toggle_schedule(job_id: str, db: Session = Depends(get_db)):
     """스케줄 활성화/비활성화 토글 (APScheduler pause/resume)"""
     try:
-        from app.scheduler import get_scheduler
+        from ..scheduler import get_scheduler
 
         schedule = db.query(NaverPaySchedule).filter(
             NaverPaySchedule.job_id == job_id
@@ -522,7 +522,7 @@ async def get_schedule_history(
 ):
     """스케줄 실행 이력 조회"""
     try:
-        from app.models.delivery import NaverPayScheduleHistory
+        from ..models.delivery import NaverPayScheduleHistory
 
         history = db.query(NaverPayScheduleHistory).order_by(
             NaverPayScheduleHistory.executed_at.desc()
@@ -539,7 +539,7 @@ async def get_schedule_history(
 async def run_schedule_now(job_id: str, db: Session = Depends(get_db)):
     """스케줄 즉시 실행"""
     try:
-        from app.scheduler import get_scheduler
+        from ..scheduler import get_scheduler
 
         schedule = db.query(NaverPaySchedule).filter(
             NaverPaySchedule.job_id == job_id

@@ -11,12 +11,13 @@ import time
 
 from .coupang_api_client import CoupangAPIClient
 from .ai_response_generator import AIResponseGenerator
-from ..models import CoupangAccount
+from ..models import CoupangAccount, AutoModeSession
+from ..database import SessionLocal
 
 
 # 전역 세션 관리자
 class AutoModeSessionManager:
-    """자동모드 세션 관리자 - 싱글톤"""
+    """자동모드 세션 관리자 - 싱글톤 (DB 영구 저장 지원)"""
     _instance = None
     _lock = threading.Lock()
 
@@ -35,7 +36,143 @@ class AutoModeSessionManager:
         self.sessions: Dict[str, Dict] = {}
         self.threads: Dict[str, threading.Thread] = {}
         self._stop_flags: Dict[str, threading.Event] = {}
+        self._db_loaded = False
         logger.info("AutoModeSessionManager 초기화됨")
+
+    def load_sessions_from_db(self, auto_restart: bool = False):
+        """DB에서 저장된 세션 로드 및 복원
+
+        Args:
+            auto_restart: True이면 running 상태였던 세션을 자동 재시작
+        """
+        if self._db_loaded:
+            return
+
+        sessions_to_restart = []
+
+        try:
+            db = SessionLocal()
+            try:
+                # 활성화된 세션만 로드
+                db_sessions = db.query(AutoModeSession).filter(
+                    AutoModeSession.is_active == True
+                ).all()
+
+                for db_session in db_sessions:
+                    # 계정 정보 로드
+                    account = db.query(CoupangAccount).filter(
+                        CoupangAccount.id == db_session.account_id
+                    ).first()
+
+                    if not account:
+                        logger.warning(f"세션 {db_session.session_id}: 계정을 찾을 수 없음, 건너뜀")
+                        continue
+
+                    # 서버 재시작 전 running 상태였는지 확인
+                    was_running = db_session.status == "running"
+
+                    # 메모리에 세션 복원
+                    self.sessions[db_session.session_id] = {
+                        "session_id": db_session.session_id,
+                        "account_id": db_session.account_id,
+                        "account_name": db_session.account_name,
+                        "vendor_id": db_session.vendor_id,
+                        "interval_minutes": db_session.interval_minutes,
+                        "inquiry_types": db_session.inquiry_types or ["online", "callcenter"],
+                        "status": "stopped",  # 초기 상태는 중지
+                        "created_at": db_session.created_at.isoformat() if db_session.created_at else datetime.now().isoformat(),
+                        "last_run": db_session.last_run.isoformat() if db_session.last_run else None,
+                        "next_run": None,
+                        "stats": {
+                            "total_collected": db_session.total_collected or 0,
+                            "total_answered": db_session.total_answered or 0,
+                            "total_submitted": db_session.total_submitted or 0,
+                            "total_confirmed": db_session.total_confirmed or 0,
+                            "total_failed": db_session.total_failed or 0,
+                            "run_count": db_session.run_count or 0
+                        },
+                        "recent_logs": [],
+                        "account": account,
+                        "db_id": db_session.id
+                    }
+
+                    logger.info(f"DB에서 세션 복원: {db_session.session_id} (계정: {db_session.account_name})")
+
+                    # 자동 재시작 대상 기록
+                    if auto_restart and was_running:
+                        sessions_to_restart.append(db_session.session_id)
+
+                self._db_loaded = True
+                logger.info(f"DB에서 {len(db_sessions)}개 세션 로드 완료")
+
+                # 자동 재시작 처리
+                if sessions_to_restart:
+                    logger.info(f"{len(sessions_to_restart)}개 세션 자동 재시작 시작...")
+                    for session_id in sessions_to_restart:
+                        self.start_session(session_id)
+                        self._add_log(session_id, "서버 재시작으로 자동 복원됨", "info")
+                    logger.info(f"{len(sessions_to_restart)}개 세션 자동 재시작 완료")
+
+            finally:
+                db.close()
+
+        except Exception as e:
+            logger.error(f"DB에서 세션 로드 실패: {str(e)}")
+
+    def _save_session_to_db(self, session_id: str):
+        """세션을 DB에 저장"""
+        session = self.sessions.get(session_id)
+        if not session:
+            return
+
+        try:
+            db = SessionLocal()
+            try:
+                # 기존 세션 찾기
+                db_session = db.query(AutoModeSession).filter(
+                    AutoModeSession.session_id == session_id
+                ).first()
+
+                if db_session:
+                    # 업데이트
+                    db_session.status = session["status"]
+                    db_session.total_collected = session["stats"]["total_collected"]
+                    db_session.total_answered = session["stats"]["total_answered"]
+                    db_session.total_submitted = session["stats"]["total_submitted"]
+                    db_session.total_confirmed = session["stats"]["total_confirmed"]
+                    db_session.total_failed = session["stats"]["total_failed"]
+                    db_session.run_count = session["stats"]["run_count"]
+                    if session.get("last_run"):
+                        db_session.last_run = datetime.fromisoformat(session["last_run"])
+                    db_session.updated_at = datetime.utcnow()
+                else:
+                    # 새로 생성
+                    db_session = AutoModeSession(
+                        session_id=session_id,
+                        account_id=session["account_id"],
+                        account_name=session["account_name"],
+                        vendor_id=session["vendor_id"],
+                        interval_minutes=session["interval_minutes"],
+                        inquiry_types=session["inquiry_types"],
+                        status=session["status"],
+                        is_active=True,
+                        total_collected=session["stats"]["total_collected"],
+                        total_answered=session["stats"]["total_answered"],
+                        total_submitted=session["stats"]["total_submitted"],
+                        total_confirmed=session["stats"]["total_confirmed"],
+                        total_failed=session["stats"]["total_failed"],
+                        run_count=session["stats"]["run_count"]
+                    )
+                    db.add(db_session)
+
+                db.commit()
+                logger.debug(f"세션 {session_id} DB 저장 완료")
+
+            finally:
+                db.close()
+
+        except Exception as e:
+            logger.error(f"세션 {session_id} DB 저장 실패: {str(e)}")
 
     def create_session(
         self,
@@ -47,6 +184,9 @@ class AutoModeSessionManager:
         account: CoupangAccount
     ) -> str:
         """새 자동모드 세션 생성"""
+        # DB에서 세션 로드 (아직 안했다면)
+        self.load_sessions_from_db()
+
         session_id = str(uuid.uuid4())[:8]
 
         self.sessions[session_id] = {
@@ -71,6 +211,9 @@ class AutoModeSessionManager:
             "recent_logs": [],
             "account": account  # 계정 정보 저장 (스레드에서 사용)
         }
+
+        # DB에 저장
+        self._save_session_to_db(session_id)
 
         # 중지 플래그 생성
         self._stop_flags[session_id] = threading.Event()
@@ -125,6 +268,9 @@ class AutoModeSessionManager:
                 next_run = datetime.now() + timedelta(minutes=session["interval_minutes"])
                 session["next_run"] = next_run.isoformat()
 
+                # DB에 통계 저장
+                self._save_session_to_db(session_id)
+
                 # 결과 로그
                 collected = result.get("collected", 0)
                 submitted = result.get("submitted", 0)
@@ -176,6 +322,9 @@ class AutoModeSessionManager:
         self.sessions[session_id]["status"] = "stopped"
         self._add_log(session_id, "자동모드가 중지되었습니다", "info")
 
+        # DB 상태 업데이트
+        self._save_session_to_db(session_id)
+
         logger.info(f"세션 {session_id} 중지됨")
         return True
 
@@ -191,6 +340,10 @@ class AutoModeSessionManager:
         # 새 중지 플래그 생성
         self._stop_flags[session_id] = threading.Event()
         session["status"] = "running"
+        session["next_run"] = datetime.now().isoformat()
+
+        # DB 상태 업데이트
+        self._save_session_to_db(session_id)
 
         # 새 스레드 시작
         thread = threading.Thread(
@@ -213,6 +366,9 @@ class AutoModeSessionManager:
         # 먼저 중지
         self.stop_session(session_id)
 
+        # DB에서 비활성화 처리
+        self._deactivate_session_in_db(session_id)
+
         # 세션 제거
         del self.sessions[session_id]
         if session_id in self._stop_flags:
@@ -222,6 +378,28 @@ class AutoModeSessionManager:
 
         logger.info(f"세션 {session_id} 삭제됨")
         return True
+
+    def _deactivate_session_in_db(self, session_id: str):
+        """DB에서 세션 비활성화"""
+        try:
+            db = SessionLocal()
+            try:
+                db_session = db.query(AutoModeSession).filter(
+                    AutoModeSession.session_id == session_id
+                ).first()
+
+                if db_session:
+                    db_session.is_active = False
+                    db_session.status = "deleted"
+                    db_session.updated_at = datetime.utcnow()
+                    db.commit()
+                    logger.debug(f"세션 {session_id} DB 비활성화 완료")
+
+            finally:
+                db.close()
+
+        except Exception as e:
+            logger.error(f"세션 {session_id} DB 비활성화 실패: {str(e)}")
 
     def get_session(self, session_id: str) -> Optional[Dict]:
         """세션 정보 조회"""

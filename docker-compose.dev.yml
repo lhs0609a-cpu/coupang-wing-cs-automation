@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: coupang_wing_backend
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend:/app
+      - ./backend/logs:/app/logs
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      - DATABASE_URL=sqlite:///./coupang_wing.db
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
+    depends_on:
+      - redis
+    networks:
+      - coupang_wing_network
+
+  # Redis (for caching)
+  redis:
+    image: redis:7-alpine
+    container_name: coupang_wing_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - coupang_wing_network
+
+  # Frontend (optional - if you create one)
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile.dev
+  #   container_name: coupang_wing_frontend
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - ./frontend:/app
+  #     - /app/node_modules
+  #   environment:
+  #     - REACT_APP_API_URL=http://localhost:8080/api
+  #   networks:
+  #     - coupang_wing_network
+
+volumes:
+  redis_data:
+
+networks:
+  coupang_wing_network:
+    driver: bridge

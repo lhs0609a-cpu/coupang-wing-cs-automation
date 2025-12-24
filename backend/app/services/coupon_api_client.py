@@ -545,12 +545,14 @@ class CouponAPIClient:
 
         try:
             response = requests.get(url, headers=headers, timeout=30)
+            logger.info(f"Download coupon API response: status={response.status_code}, body={response.text[:500] if response.text else 'empty'}")
+
             # 400/404 에러 시 None 반환
             if response.status_code in [400, 404]:
-                logger.warning(f"Download coupon {coupon_id} not found or API error")
+                logger.warning(f"Download coupon {coupon_id} not found: {response.text}")
                 return {"code": "NOT_FOUND", "message": f"쿠폰 {coupon_id}을(를) 찾을 수 없습니다"}
             if response.status_code == 403:
-                logger.warning(f"Download coupon API returned 403 - Access denied")
+                logger.warning(f"Download coupon API returned 403: {response.text}")
                 return {"code": "FORBIDDEN", "message": "접근 권한 없음"}
             response.raise_for_status()
             return response.json()

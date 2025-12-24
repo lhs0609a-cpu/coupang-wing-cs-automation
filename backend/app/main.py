@@ -87,6 +87,15 @@ async def lifespan(app: FastAPI):
             monitor.log_exception("SchedulerError", str(e))
             logger.error(f"Failed to start scheduler: {str(e)}")
 
+    # Auto-restore auto mode sessions from DB
+    try:
+        from .services.auto_mode_service import get_session_manager
+        session_manager = get_session_manager()
+        session_manager.load_sessions_from_db(auto_restart=True)
+        logger.success("Auto mode sessions restored from DB")
+    except Exception as e:
+        logger.error(f"Failed to restore auto mode sessions: {str(e)}")
+
     monitor.log_app_ready()
     logger.success("Application ready to serve requests")
 
@@ -117,8 +126,8 @@ app = FastAPI(
 )
 
 
-# Add custom middlewares (order matters - last added = first executed)
-# Rate limiting first (innermost)
+# Add custom middlewares (order matters - LAST added = FIRST executed)
+# Rate limiting first (innermost - runs closest to the app)
 app.add_middleware(
     RateLimitMiddleware,
     requests_per_minute=60,
@@ -130,7 +139,8 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestIDMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 
-# Configure CORS - MUST BE LAST (so it executes FIRST)
+# Configure CORS - MUST BE LAST (so it executes FIRST, outermost)
+# This ensures preflight OPTIONS requests are handled before other middlewares
 # Allow all origins for production deployment (Vercel frontend)
 app.add_middleware(
     CORSMiddleware,
@@ -175,6 +185,19 @@ app.include_router(gpt_settings.router, prefix="/api")
 app.include_router(issue_response.router, prefix="/api")
 app.include_router(naver_delivery_sync.router, prefix="/api")
 app.include_router(auto_mode.router, prefix="/api")
+
+
+# Explicit OPTIONS handler for CORS preflight (fallback)
+@app.options("/{rest_of_path:path}")
+async def preflight_handler(rest_of_path: str):
+    """Handle CORS preflight requests explicitly"""
+    from fastapi.responses import Response
+    response = Response(status_code=200)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Max-Age"] = "3600"
+    return response
 
 
 @app.get("/", response_class=HTMLResponse)

@@ -19,6 +19,7 @@ from .coupon_config import CouponAutoSyncConfig, ProductCouponTracking, CouponAp
 from .naver_review import NaverReviewTemplate, NaverReviewLog, NaverReviewImage, NaverReviewStats
 from .delivery import NaverPayDelivery, NaverPayDeliveryHistory, NaverPaySchedule
 from .ip_mapping import IPMapping, SheetConfig
+from .auto_mode_session import AutoModeSession
 
 __all__ = [
     "Inquiry",
@@ -53,5 +54,6 @@ __all__ = [
     "NaverPayDeliveryHistory",
     "NaverPaySchedule",
     "IPMapping",
-    "SheetConfig"
+    "SheetConfig",
+    "AutoModeSession"
 ]

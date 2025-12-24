@@ -68,16 +68,35 @@
 }
 
 .account-select option {
-  background: #4a4a6a !important;
-  color: #ffffff !important;
+  background: #1a1a24;
+  color: #ffffff;
   padding: 12px;
   font-weight: 600;
   font-size: 14px;
 }
 
 .account-select option:hover {
-  background: #8b5cf6 !important;
-  color: #ffffff !important;
+  background: #8b5cf6;
+  color: #ffffff;
+}
+
+[data-theme="light"] .account-select {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%);
+  border-color: #9ca3af;
+  color: #1f2937;
+}
+
+[data-theme="light"] .account-select:hover {
+  border-color: #6366f1;
+}
+
+[data-theme="light"] .account-select option {
+  background: #ffffff;
+  color: #1f2937;
+}
+
+[data-theme="light"] .account-select option:checked {
+  background: #e5e7eb;
 }
 
 .refresh-btn {
@@ -627,16 +646,35 @@
 }
 
 .select-with-button select option {
-  background: #4a4a6a !important;
-  color: #ffffff !important;
+  background: #1a1a24;
+  color: #ffffff;
   padding: 12px;
   font-weight: 600;
   font-size: 14px;
 }
 
 .select-with-button select option:hover {
-  background: #34d399 !important;
-  color: #000000 !important;
+  background: #34d399;
+  color: #000000;
+}
+
+[data-theme="light"] .select-with-button select {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(52, 211, 153, 0.08) 100%);
+  border-color: #9ca3af;
+  color: #1f2937;
+}
+
+[data-theme="light"] .select-with-button select:hover {
+  border-color: #10b981;
+}
+
+[data-theme="light"] .select-with-button select option {
+  background: #ffffff;
+  color: #1f2937;
+}
+
+[data-theme="light"] .select-with-button select option:checked {
+  background: #d1fae5;
 }
 
 .load-coupons-btn {
@@ -765,16 +803,35 @@
 }
 
 .option-input select option {
-  background: #4a4a6a !important;
-  color: #ffffff !important;
+  background: #1a1a24;
+  color: #ffffff;
   padding: 12px;
   font-weight: 600;
   font-size: 14px;
 }
 
 .option-input select option:hover {
-  background: #fbbf24 !important;
-  color: #000000 !important;
+  background: #fbbf24;
+  color: #000000;
+}
+
+[data-theme="light"] .option-input select {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(251, 191, 36, 0.08) 100%);
+  border-color: #9ca3af;
+  color: #1f2937;
+}
+
+[data-theme="light"] .option-input select:hover {
+  border-color: #f59e0b;
+}
+
+[data-theme="light"] .option-input select option {
+  background: #ffffff;
+  color: #1f2937;
+}
+
+[data-theme="light"] .option-input select option:checked {
+  background: #fef3c7;
 }
 
 .checkbox-row {
@@ -1223,6 +1280,88 @@
   font-size: 14px;
   color: var(--text-secondary);
   margin: 0;
+}
+
+/* Light Mode Styles */
+[data-theme="light"] .promotion-content {
+  background: #ffffff;
+  border-color: #e5e7eb;
+}
+
+[data-theme="light"] .config-step {
+  background: #f9fafb;
+  border-color: #e5e7eb;
+}
+
+[data-theme="light"] .form-row input {
+  background: #ffffff;
+  border-color: #d1d5db;
+  color: #1f2937;
+}
+
+[data-theme="light"] .form-row input::placeholder {
+  color: #9ca3af;
+}
+
+[data-theme="light"] .form-row input:hover {
+  border-color: #9ca3af;
+}
+
+[data-theme="light"] .form-row input:focus {
+  border-color: #5b6fd6;
+  box-shadow: 0 0 0 3px rgba(91, 111, 214, 0.1);
+}
+
+[data-theme="light"] .stat-card {
+  background: #ffffff;
+  border-color: #e5e7eb;
+}
+
+[data-theme="light"] .coupon-card {
+  background: #ffffff;
+  border-color: #e5e7eb;
+}
+
+[data-theme="light"] .coupon-card-header {
+  background: #f9fafb;
+}
+
+[data-theme="light"] .toggle-slider {
+  background-color: #d1d5db;
+}
+
+[data-theme="light"] .checkbox-row {
+  background: #f9fafb;
+  border-color: #e5e7eb;
+}
+
+[data-theme="light"] .input-with-button input {
+  background: #ffffff;
+  border-color: #d1d5db;
+  color: #1f2937;
+}
+
+[data-theme="light"] .input-with-unit .unit {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  color: #6b7280;
+}
+
+[data-theme="light"] .tracking-item {
+  background: #f9fafb;
+}
+
+[data-theme="light"] .log-item {
+  background: #f9fafb;
+}
+
+[data-theme="light"] .progress-section {
+  background: #ffffff;
+  border-color: #e5e7eb;
+}
+
+[data-theme="light"] .progress-bar-container {
+  background: #e5e7eb;
 }
 
 /* Responsive */

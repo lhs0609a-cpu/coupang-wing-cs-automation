@@ -17,11 +17,16 @@ primary_region = "nrt"  # 도쿄 리전 (한국과 가까움)
   auto_start_machines = true
   min_machines_running = 1
 
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
   [[http_service.checks]]
-    grace_period = "10s"
-    interval = "30s"
+    grace_period = "30s"
+    interval = "15s"
     method = "GET"
-    timeout = "10s"
+    timeout = "5s"
     path = "/health"
 
 [[vm]]
@@ -35,7 +40,3 @@ primary_region = "nrt"  # 도쿄 리전 (한국과 가까움)
 [[mounts]]
   source = "coupang_data"
   destination = "/data"
-
-[[statics]]
-  guest_path = "/app/static"
-  url_prefix = "/"

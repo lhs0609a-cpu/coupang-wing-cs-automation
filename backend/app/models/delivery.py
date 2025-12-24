@@ -3,7 +3,7 @@ NaverPay 배송 정보 모델
 """
 from sqlalchemy import Column, Integer, String, DateTime, Text, Index
 from sqlalchemy.sql import func
-from app.database import Base
+from ..database import Base
 
 
 class NaverPayDelivery(Base):
