@@ -209,6 +209,7 @@ class AutoModeSessionManager:
                 "run_count": 0
             },
             "recent_logs": [],
+            "inquiry_history": [],  # 상세 문의 처리 히스토리
             "account": account  # 계정 정보 저장 (스레드에서 사용)
         }
 
@@ -276,6 +277,11 @@ class AutoModeSessionManager:
                 submitted = result.get("submitted", 0)
                 confirmed = result.get("details", {}).get("callcenter", {}).get("confirmed", 0)
 
+                # 상세 문의 히스토리 저장
+                for inquiry_type, type_details in result.get("details", {}).items():
+                    for item in type_details.get("items", []):
+                        self._add_inquiry_history(session_id, item)
+
                 if collected == 0:
                     self._add_log(session_id, "처리할 미답변 문의가 없습니다", "info")
                 else:
@@ -308,6 +314,20 @@ class AutoModeSessionManager:
             }
             session["recent_logs"].insert(0, log_entry)
             session["recent_logs"] = session["recent_logs"][:20]  # 최근 20개만 유지
+
+    def _add_inquiry_history(self, session_id: str, history_entry: dict):
+        """세션에 문의 처리 히스토리 추가"""
+        session = self.sessions.get(session_id)
+        if session:
+            if "inquiry_history" not in session:
+                session["inquiry_history"] = []
+
+            # 타임스탬프 추가
+            history_entry["timestamp"] = datetime.now().isoformat()
+            history_entry["time"] = datetime.now().strftime("%H:%M:%S")
+
+            session["inquiry_history"].insert(0, history_entry)
+            session["inquiry_history"] = session["inquiry_history"][:50]  # 최근 50개만 유지
 
     def stop_session(self, session_id: str) -> bool:
         """세션 중지"""
@@ -812,24 +832,37 @@ class AutoModeService:
                     for keyword in special_keywords:
                         if keyword in reply_content:
                             is_special_case = True
-                            logger.info(f"[callcenter] 문의 {inquiry_id}: 특수 양식 요구 케이스, 건너뜀")
+                            special_keyword_found = keyword
+                            logger.info(f"[callcenter] 문의 {inquiry_id}: 특수 양식 요구 케이스 (키워드: {keyword}), 건너뜀")
                             break
 
                     break
+
+            # 문의 내용 추출 (히스토리용)
+            inquiry_content_for_history = inquiry.get("content", "")
+            customer_name_for_history = inquiry.get("buyerName", "고객")
 
             if parent_answer_id == 0:
                 logger.warning(f"[callcenter] 문의 {inquiry_id}: parentAnswerId를 찾을 수 없음, 건너뜀")
                 return {
                     "inquiry_id": inquiry_id,
                     "status": "skipped",
-                    "error": "parentAnswerId를 찾을 수 없음"
+                    "error": "parentAnswerId를 찾을 수 없음",
+                    "inquiry_type": "callcenter",
+                    "inquiry_content": inquiry_content_for_history[:200] if inquiry_content_for_history else "",
+                    "customer_name": customer_name_for_history
                 }
 
             if is_special_case:
                 return {
                     "inquiry_id": inquiry_id,
                     "status": "skipped",
-                    "error": "특수 양식 요구 케이스"
+                    "error": f"특수 양식 요구 케이스 (링크 클릭 필요)",
+                    "inquiry_type": "callcenter",
+                    "inquiry_content": inquiry_content_for_history[:200] if inquiry_content_for_history else "",
+                    "customer_name": customer_name_for_history,
+                    "special_reply_content": reply_content[:300] if reply_content else "",
+                    "skip_reason": f"자동 처리 불가 - 특수 양식 필요 (키워드: {special_keyword_found})"
                 }
 
             # 문의 내용 추출
@@ -840,7 +873,9 @@ class AutoModeService:
                 return {
                     "inquiry_id": inquiry_id,
                     "status": "failed",
-                    "error": "문의 내용이 비어있습니다"
+                    "error": "문의 내용이 비어있습니다",
+                    "inquiry_type": "callcenter",
+                    "customer_name": customer_name
                 }
 
             # AI 답변 생성
@@ -853,7 +888,10 @@ class AutoModeService:
                 return {
                     "inquiry_id": inquiry_id,
                     "status": "failed",
-                    "error": "AI 답변 생성 실패"
+                    "error": "AI 답변 생성 실패",
+                    "inquiry_type": "callcenter",
+                    "inquiry_content": inquiry_content[:300] if inquiry_content else "",
+                    "customer_name": customer_name
                 }
 
             response_text = ai_result["response_text"]
@@ -871,6 +909,10 @@ class AutoModeService:
                     return {
                         "inquiry_id": inquiry_id,
                         "status": "submitted",
+                        "inquiry_type": "callcenter",
+                        "inquiry_content": inquiry_content[:300] if inquiry_content else "",
+                        "customer_name": customer_name,
+                        "response_text": response_text,
                         "response_preview": response_text[:100] + "..." if len(response_text) > 100 else response_text
                     }
                 else:
@@ -879,12 +921,20 @@ class AutoModeService:
                     return {
                         "inquiry_id": inquiry_id,
                         "status": "failed",
-                        "error": f"제출 실패: {error_msg}"
+                        "error": f"제출 실패: {error_msg}",
+                        "inquiry_type": "callcenter",
+                        "inquiry_content": inquiry_content[:300] if inquiry_content else "",
+                        "customer_name": customer_name,
+                        "response_text": response_text
                     }
             else:
                 return {
                     "inquiry_id": inquiry_id,
                     "status": "answered",
+                    "inquiry_type": "callcenter",
+                    "inquiry_content": inquiry_content[:300] if inquiry_content else "",
+                    "customer_name": customer_name,
+                    "response_text": response_text,
                     "response_preview": response_text[:100] + "..." if len(response_text) > 100 else response_text
                 }
 
@@ -893,7 +943,8 @@ class AutoModeService:
             return {
                 "inquiry_id": inquiry_id,
                 "status": "failed",
-                "error": str(e)
+                "error": str(e),
+                "inquiry_type": "callcenter"
             }
 
     def _process_transfer_inquiry(
@@ -914,6 +965,8 @@ class AutoModeService:
             처리 결과
         """
         inquiry_id = inquiry.get("inquiryId")
+        inquiry_content = inquiry.get("content", "")
+        customer_name = inquiry.get("buyerName", "고객")
 
         try:
             logger.info(f"[callcenter] TRANSFER 문의 {inquiry_id} 확인완료 시도, confirm_by={reply_by}")
@@ -931,7 +984,11 @@ class AutoModeService:
                 logger.success(f"[callcenter] 문의 {inquiry_id} 확인완료 처리 성공")
                 return {
                     "inquiry_id": inquiry_id,
-                    "status": "confirmed"
+                    "status": "confirmed",
+                    "inquiry_type": "callcenter_transfer",
+                    "inquiry_content": inquiry_content[:300] if inquiry_content else "",
+                    "customer_name": customer_name,
+                    "action": "확인완료 처리"
                 }
             else:
                 error_msg = confirm_result.get("message", "알 수 없는 오류")
@@ -940,7 +997,10 @@ class AutoModeService:
                 return {
                     "inquiry_id": inquiry_id,
                     "status": "failed",
-                    "error": f"확인완료 실패 (code={error_code}): {error_msg}"
+                    "error": f"확인완료 실패 (code={error_code}): {error_msg}",
+                    "inquiry_type": "callcenter_transfer",
+                    "inquiry_content": inquiry_content[:300] if inquiry_content else "",
+                    "customer_name": customer_name
                 }
 
         except Exception as e:
@@ -950,5 +1010,8 @@ class AutoModeService:
             return {
                 "inquiry_id": inquiry_id,
                 "status": "failed",
-                "error": str(e)
+                "error": str(e),
+                "inquiry_type": "callcenter_transfer",
+                "inquiry_content": inquiry_content[:300] if inquiry_content else "",
+                "customer_name": customer_name
             }

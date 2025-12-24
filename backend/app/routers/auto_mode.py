@@ -58,6 +58,7 @@ class SessionResponse(BaseModel):
     next_run: Optional[str]
     stats: dict
     recent_logs: List[dict]
+    inquiry_history: Optional[List[dict]] = []  # 상세 문의 처리 히스토리
 
 
 # ============== 세션 관리 API ==============
