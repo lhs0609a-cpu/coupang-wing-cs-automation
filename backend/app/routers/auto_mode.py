@@ -278,10 +278,12 @@ def test_account_connection(
             page_size=1
         )
 
-        if result.get("code") == "SUCCESS":
+        # API는 성공 시 code: 200 또는 code: "SUCCESS" 반환
+        if result.get("code") in [200, "200", "SUCCESS"]:
+            total = result.get("data", {}).get("pagination", {}).get("totalElements", 0)
             return {
                 "success": True,
-                "message": "API 연결 성공",
+                "message": f"API 연결 성공 (미답변 문의: {total}건)",
                 "account_name": account.name,
                 "vendor_id": account.vendor_id
             }
