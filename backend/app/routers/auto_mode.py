@@ -303,3 +303,161 @@ def test_account_connection(
             "success": False,
             "message": f"연결 테스트 실패: {str(e)}"
         }
+
+
+# ============== 실패 문의 관리 API ==============
+
+class ManualReplyRequest(BaseModel):
+    """수동 답변 요청"""
+    account_id: int
+    inquiry_id: str
+    inquiry_type: str  # "online" or "callcenter"
+    content: str
+    reply_by: Optional[str] = "manual"
+    parent_answer_id: Optional[int] = None  # callcenter용
+
+
+@router.get("/failed-inquiries")
+def get_failed_inquiries():
+    """
+    모든 세션의 실패/건너뜀 문의 목록 조회
+    """
+    manager = get_session_manager()
+    sessions = manager.get_all_sessions()
+
+    failed_inquiries = []
+
+    for session in sessions:
+        inquiry_history = session.get("inquiry_history", [])
+
+        for item in inquiry_history:
+            if item.get("status") in ["failed", "skipped"]:
+                failed_inquiries.append({
+                    "session_id": session.get("session_id"),
+                    "account_id": session.get("account_id"),
+                    "account_name": session.get("account_name"),
+                    "vendor_id": session.get("vendor_id"),
+                    "inquiry_id": item.get("inquiry_id"),
+                    "status": item.get("status"),
+                    "error": item.get("error") or item.get("skip_reason"),
+                    "inquiry_type": item.get("inquiry_type", "online"),
+                    "inquiry_content": item.get("inquiry_content", ""),
+                    "customer_name": item.get("customer_name", ""),
+                    "response_text": item.get("response_text", ""),
+                    "special_reply_content": item.get("special_reply_content", ""),
+                    "timestamp": item.get("timestamp"),
+                    "time": item.get("time")
+                })
+
+    # 최신순 정렬
+    failed_inquiries.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+
+    return {
+        "success": True,
+        "total": len(failed_inquiries),
+        "inquiries": failed_inquiries
+    }
+
+
+@router.post("/manual-reply")
+def submit_manual_reply(
+    request: ManualReplyRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    실패한 문의에 수동으로 답변 제출
+    """
+    try:
+        # 계정 조회
+        account = db.query(CoupangAccount).filter(
+            CoupangAccount.id == request.account_id
+        ).first()
+
+        if not account:
+            raise HTTPException(status_code=404, detail="계정을 찾을 수 없습니다")
+
+        from ..services.coupang_api_client import CoupangAPIClient
+
+        client = CoupangAPIClient(
+            access_key=account.access_key,
+            secret_key=account.secret_key,
+            vendor_id=account.vendor_id
+        )
+
+        # 문의 유형에 따라 다른 API 호출
+        if request.inquiry_type == "online":
+            result = client.reply_to_online_inquiry(
+                inquiry_id=int(request.inquiry_id),
+                content=request.content,
+                reply_by=request.reply_by or account.wing_username or "manual"
+            )
+        else:  # callcenter
+            if not request.parent_answer_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="콜센터 문의는 parent_answer_id가 필요합니다"
+                )
+            result = client.reply_to_call_center_inquiry(
+                inquiry_id=request.inquiry_id,
+                content=request.content,
+                reply_by=request.reply_by or account.wing_username or "manual",
+                parent_answer_id=request.parent_answer_id
+            )
+
+        if result.get("code") in [200, "200"]:
+            logger.success(f"수동 답변 제출 성공 - 문의 ID: {request.inquiry_id}")
+            return {
+                "success": True,
+                "message": "답변이 성공적으로 제출되었습니다",
+                "inquiry_id": request.inquiry_id
+            }
+        else:
+            error_msg = result.get("message", "알 수 없는 오류")
+            logger.error(f"수동 답변 제출 실패 - {error_msg}")
+            return {
+                "success": False,
+                "message": f"제출 실패: {error_msg}",
+                "inquiry_id": request.inquiry_id
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"수동 답변 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/generate-reply")
+def generate_ai_reply(
+    inquiry_text: str,
+    customer_name: str = "고객"
+):
+    """
+    AI 답변 생성 (수동 처리용)
+    """
+    try:
+        from ..services.ai_response_generator import AIResponseGenerator
+
+        generator = AIResponseGenerator()
+        result = generator.generate_response_from_text(
+            inquiry_text=inquiry_text,
+            customer_name=customer_name
+        )
+
+        if result and result.get("response_text"):
+            return {
+                "success": True,
+                "response_text": result["response_text"]
+            }
+        else:
+            return {
+                "success": False,
+                "message": "AI 답변 생성 실패"
+            }
+
+    except Exception as e:
+        logger.error(f"AI 답변 생성 오류: {str(e)}")
+        return {
+            "success": False,
+            "message": str(e)
+        }

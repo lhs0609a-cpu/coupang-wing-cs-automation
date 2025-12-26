@@ -18,7 +18,12 @@ import {
   Power,
   User,
   Settings,
-  Activity
+  Activity,
+  Edit3,
+  Send,
+  X,
+  ExternalLink,
+  RotateCcw
 } from 'lucide-react'
 import '../styles/AutoModePanel.css'
 
@@ -26,6 +31,14 @@ const AutoModePanel = ({ apiBaseUrl }) => {
   // 세션 목록
   const [sessions, setSessions] = useState([])
   const [expandedSessions, setExpandedSessions] = useState({})
+
+  // 실패 문의 관리
+  const [failedInquiries, setFailedInquiries] = useState([])
+  const [showFailedPanel, setShowFailedPanel] = useState(false)
+  const [selectedInquiry, setSelectedInquiry] = useState(null)
+  const [manualReplyText, setManualReplyText] = useState('')
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false)
+  const [isSubmittingReply, setIsSubmittingReply] = useState(false)
 
   // 새 세션 생성 폼
   const [showNewForm, setShowNewForm] = useState(false)
@@ -254,6 +267,98 @@ const AutoModePanel = ({ apiBaseUrl }) => {
       ...prev,
       [sessionId]: !prev[sessionId]
     }))
+  }
+
+  // 실패 문의 목록 로드
+  const loadFailedInquiries = useCallback(async () => {
+    try {
+      const response = await fetch(`${apiBaseUrl}/auto-mode/failed-inquiries`)
+      if (response.ok) {
+        const data = await response.json()
+        setFailedInquiries(data.inquiries || [])
+      }
+    } catch (error) {
+      console.error('실패 문의 로드 실패:', error)
+    }
+  }, [apiBaseUrl])
+
+  // 실패 패널 열기
+  const openFailedPanel = async () => {
+    setShowFailedPanel(true)
+    await loadFailedInquiries()
+  }
+
+  // 수동 답변 모달 열기
+  const openManualReply = (inquiry) => {
+    setSelectedInquiry(inquiry)
+    setManualReplyText('')
+  }
+
+  // 수동 답변 모달 닫기
+  const closeManualReply = () => {
+    setSelectedInquiry(null)
+    setManualReplyText('')
+  }
+
+  // AI 답변 생성
+  const generateAIReply = async () => {
+    if (!selectedInquiry?.inquiry_content) {
+      alert('문의 내용이 없습니다')
+      return
+    }
+
+    setIsGeneratingAI(true)
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/auto-mode/generate-reply?inquiry_text=${encodeURIComponent(selectedInquiry.inquiry_content)}&customer_name=${encodeURIComponent(selectedInquiry.customer_name || '고객')}`,
+        { method: 'POST' }
+      )
+      const data = await response.json()
+      if (data.success) {
+        setManualReplyText(data.response_text)
+      } else {
+        alert(`AI 답변 생성 실패: ${data.message}`)
+      }
+    } catch (error) {
+      alert(`오류: ${error.message}`)
+    } finally {
+      setIsGeneratingAI(false)
+    }
+  }
+
+  // 수동 답변 제출
+  const submitManualReply = async () => {
+    if (!manualReplyText.trim()) {
+      alert('답변 내용을 입력해주세요')
+      return
+    }
+
+    setIsSubmittingReply(true)
+    try {
+      const response = await fetch(`${apiBaseUrl}/auto-mode/manual-reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          account_id: selectedInquiry.account_id,
+          inquiry_id: selectedInquiry.inquiry_id,
+          inquiry_type: selectedInquiry.inquiry_type || 'online',
+          content: manualReplyText,
+          reply_by: 'manual'
+        })
+      })
+      const data = await response.json()
+      if (data.success) {
+        alert('답변이 제출되었습니다')
+        closeManualReply()
+        await loadFailedInquiries()
+      } else {
+        alert(`제출 실패: ${data.message}`)
+      }
+    } catch (error) {
+      alert(`오류: ${error.message}`)
+    } finally {
+      setIsSubmittingReply(false)
+    }
   }
 
   // 시간 포맷팅
@@ -601,13 +706,226 @@ const AutoModePanel = ({ apiBaseUrl }) => {
               <span className="summary-value">{totalStats.confirmed}</span>
               <span className="summary-label">확인</span>
             </div>
-            <div className="summary-item error">
+            <div
+              className="summary-item error clickable"
+              onClick={openFailedPanel}
+              title="클릭하여 실패 문의 확인"
+            >
               <span className="summary-value">{totalStats.failed}</span>
               <span className="summary-label">실패</span>
             </div>
           </div>
         </div>
       )}
+
+      {/* 실패 문의 패널 */}
+      <AnimatePresence>
+        {showFailedPanel && (
+          <motion.div
+            className="failed-panel-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowFailedPanel(false)}
+          >
+            <motion.div
+              className="failed-panel"
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 50 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="failed-panel-header">
+                <h3>
+                  <XCircle size={20} />
+                  실패한 문의 ({failedInquiries.length}건)
+                </h3>
+                <div className="failed-panel-actions">
+                  <button onClick={loadFailedInquiries} className="refresh-btn">
+                    <RefreshCw size={16} />
+                  </button>
+                  <button onClick={() => setShowFailedPanel(false)} className="close-btn">
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="failed-panel-content">
+                {failedInquiries.length === 0 ? (
+                  <div className="no-failed">
+                    <CheckCircle size={48} />
+                    <p>실패한 문의가 없습니다</p>
+                  </div>
+                ) : (
+                  <div className="failed-list">
+                    {failedInquiries.map((inquiry, idx) => (
+                      <div key={`${inquiry.inquiry_id}-${idx}`} className="failed-item">
+                        <div className="failed-item-header">
+                          <span className="account-badge">{inquiry.account_name}</span>
+                          <span className="time-badge">{inquiry.time || formatTime(inquiry.timestamp)}</span>
+                          <span className={`status-badge ${inquiry.status}`}>
+                            {inquiry.status === 'failed' ? '실패' : '건너뜀'}
+                          </span>
+                        </div>
+
+                        <div className="failed-reason">
+                          <AlertCircle size={14} />
+                          <span>{inquiry.error || '알 수 없는 오류'}</span>
+                        </div>
+
+                        <div className="failed-customer">
+                          <User size={14} />
+                          <span>{inquiry.customer_name || '고객'}</span>
+                        </div>
+
+                        <div className="failed-content">
+                          <p>{inquiry.inquiry_content || '(문의 내용 없음)'}</p>
+                        </div>
+
+                        {inquiry.response_text && (
+                          <div className="ai-response-preview">
+                            <span className="label">AI 답변:</span>
+                            <p>{inquiry.response_text.substring(0, 100)}...</p>
+                          </div>
+                        )}
+
+                        <div className="failed-actions">
+                          <button
+                            className="action-btn primary"
+                            onClick={() => openManualReply(inquiry)}
+                          >
+                            <Edit3 size={14} />
+                            수동 답변
+                          </button>
+                          {inquiry.special_reply_content && (
+                            <button
+                              className="action-btn secondary"
+                              onClick={() => window.open(`https://wing.coupang.com`, '_blank')}
+                            >
+                              <ExternalLink size={14} />
+                              링크 열기
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 수동 답변 모달 */}
+      <AnimatePresence>
+        {selectedInquiry && (
+          <motion.div
+            className="manual-reply-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={closeManualReply}
+          >
+            <motion.div
+              className="manual-reply-modal"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="modal-header">
+                <h3>
+                  <Edit3 size={20} />
+                  수동 답변 작성
+                </h3>
+                <button onClick={closeManualReply} className="close-btn">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="modal-content">
+                <div className="inquiry-info">
+                  <div className="info-row">
+                    <span className="label">계정:</span>
+                    <span>{selectedInquiry.account_name}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="label">문의 ID:</span>
+                    <span>{selectedInquiry.inquiry_id}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="label">고객:</span>
+                    <span>{selectedInquiry.customer_name || '고객'}</span>
+                  </div>
+                </div>
+
+                <div className="inquiry-content-box">
+                  <div className="box-label">문의 내용</div>
+                  <div className="box-content">
+                    {selectedInquiry.inquiry_content || '(문의 내용 없음)'}
+                  </div>
+                </div>
+
+                <div className="reply-input-box">
+                  <div className="box-label">
+                    답변 작성
+                    <button
+                      className="ai-generate-btn"
+                      onClick={generateAIReply}
+                      disabled={isGeneratingAI}
+                    >
+                      {isGeneratingAI ? (
+                        <>
+                          <RefreshCw size={14} className="spinning" />
+                          생성 중...
+                        </>
+                      ) : (
+                        <>
+                          <RotateCcw size={14} />
+                          AI 답변 생성
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <textarea
+                    value={manualReplyText}
+                    onChange={(e) => setManualReplyText(e.target.value)}
+                    placeholder="답변 내용을 입력하세요..."
+                    rows={8}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button
+                  className="cancel-btn"
+                  onClick={closeManualReply}
+                >
+                  취소
+                </button>
+                <button
+                  className="submit-btn"
+                  onClick={submitManualReply}
+                  disabled={isSubmittingReply || !manualReplyText.trim()}
+                >
+                  {isSubmittingReply ? (
+                    <>
+                      <RefreshCw size={16} className="spinning" />
+                      제출 중...
+                    </>
+                  ) : (
+                    <>
+                      <Send size={16} />
+                      답변 제출
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   )
 }

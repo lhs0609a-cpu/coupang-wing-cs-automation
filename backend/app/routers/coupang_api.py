@@ -182,6 +182,85 @@ async def test_connection(
         }
 
 
+class InquiriesRequest(BaseModel):
+    """문의 조회 요청"""
+    credentials: Optional[CoupangAPICredentials] = None
+    answered_type: str = "NOANSWER"
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    account_id: Optional[int] = None
+
+
+@router.post("/inquiries")
+async def fetch_inquiries(
+    request: InquiriesRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    상품별 고객문의 조회 (POST - 인증정보를 body로 전달)
+
+    Args:
+        request: 조회 요청 (credentials, answered_type 등)
+
+    Returns:
+        문의 목록
+    """
+    try:
+        client = None
+
+        # account_id가 있으면 DB에서 계정 정보 조회
+        if request.account_id:
+            account = db.query(CoupangAccount).filter(CoupangAccount.id == request.account_id).first()
+            if account:
+                account_data = account.to_dict(include_keys=True)
+                client = CoupangAPIClient(
+                    access_key=account_data.get('access_key'),
+                    secret_key=account_data.get('secret_key'),
+                    vendor_id=account_data.get('vendor_id')
+                )
+
+        # credentials가 있으면 사용
+        if not client and request.credentials:
+            client = _create_client(request.credentials)
+
+        # 둘 다 없으면 기본값 사용
+        if not client:
+            client = _create_client()
+
+        # 기본 날짜 설정
+        end_date = request.end_date or datetime.now().strftime("%Y-%m-%d")
+        start_date = request.start_date or (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
+
+        result = client.get_online_inquiries(
+            start_date=start_date,
+            end_date=end_date,
+            answered_type=request.answered_type,
+            page_size=50
+        )
+
+        if result.get("code") == 200:
+            inquiries = result.get("data", {}).get("content", [])
+            return {
+                "success": True,
+                "inquiries": inquiries,
+                "message": f"{len(inquiries)}개 문의 조회 완료"
+            }
+        else:
+            return {
+                "success": False,
+                "inquiries": [],
+                "message": result.get("message", "조회 실패")
+            }
+
+    except Exception as e:
+        logger.error(f"문의 조회 실패: {str(e)}")
+        return {
+            "success": False,
+            "inquiries": [],
+            "message": str(e)
+        }
+
+
 @router.get("/inquiries/online")
 async def get_online_inquiries(
     start_date: Optional[str] = None,

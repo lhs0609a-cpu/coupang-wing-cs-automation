@@ -11,7 +11,7 @@ import time
 
 from .coupang_api_client import CoupangAPIClient
 from .ai_response_generator import AIResponseGenerator
-from ..models import CoupangAccount, AutoModeSession
+from ..models import CoupangAccount, AutoModeSession, Inquiry, Response
 from ..database import SessionLocal
 
 
@@ -462,6 +462,72 @@ class AutoModeService:
     def __init__(self):
         self.ai_generator = AIResponseGenerator()
 
+    def _save_inquiry_and_response(
+        self,
+        inquiry_id: str,
+        vendor_id: str,
+        inquiry_type: str,
+        inquiry_content: str,
+        customer_name: str,
+        product_name: str,
+        response_text: str,
+        status: str,
+        submitted_by: str
+    ):
+        """문의와 답변을 DB에 저장"""
+        try:
+            db = SessionLocal()
+            try:
+                # 기존 문의 확인 또는 새로 생성
+                existing_inquiry = db.query(Inquiry).filter(
+                    Inquiry.coupang_inquiry_id == str(inquiry_id)
+                ).first()
+
+                if not existing_inquiry:
+                    # 새 문의 생성
+                    new_inquiry = Inquiry(
+                        coupang_inquiry_id=str(inquiry_id),
+                        vendor_id=vendor_id,
+                        customer_name=customer_name,
+                        product_name=product_name,
+                        inquiry_text=inquiry_content,
+                        inquiry_category=inquiry_type,
+                        inquiry_date=datetime.utcnow(),
+                        status="processed" if status == "submitted" else "pending"
+                    )
+                    db.add(new_inquiry)
+                    db.flush()
+                    local_inquiry_id = new_inquiry.id
+                else:
+                    local_inquiry_id = existing_inquiry.id
+                    existing_inquiry.status = "processed" if status == "submitted" else "pending"
+
+                # 응답 저장
+                new_response = Response(
+                    inquiry_id=local_inquiry_id,
+                    response_text=response_text,
+                    original_response=response_text,
+                    confidence_score=85.0,
+                    risk_level="low",
+                    generation_method="ai",
+                    validation_passed=True,
+                    status="submitted" if status == "submitted" else "draft",
+                    submitted_at=datetime.utcnow() if status == "submitted" else None,
+                    submitted_by=submitted_by,
+                    submission_status="success" if status == "submitted" else None,
+                    auto_approved=True
+                )
+                db.add(new_response)
+                db.commit()
+
+                logger.debug(f"문의 {inquiry_id} 및 답변 DB 저장 완료")
+
+            finally:
+                db.close()
+
+        except Exception as e:
+            logger.error(f"문의/답변 DB 저장 실패: {str(e)}")
+
     def run_full_cycle(
         self,
         account: CoupangAccount,
@@ -748,6 +814,18 @@ class AutoModeService:
 
                 if submit_result.get("code") in [200, "200"]:
                     logger.success(f"[online] 문의 {inquiry_id} 답변 제출 성공")
+                    # DB에 문의와 답변 저장
+                    self._save_inquiry_and_response(
+                        inquiry_id=str(inquiry_id),
+                        vendor_id=api_client.vendor_id,
+                        inquiry_type="online",
+                        inquiry_content=question,
+                        customer_name=customer_name,
+                        product_name=product_name,
+                        response_text=response_text,
+                        status="submitted",
+                        submitted_by=reply_by
+                    )
                     return {
                         "inquiry_id": inquiry_id,
                         "status": "submitted",
@@ -906,6 +984,18 @@ class AutoModeService:
 
                 if submit_result.get("code") in [200, "200"]:
                     logger.success(f"[callcenter] 문의 {inquiry_id} 답변 제출 성공")
+                    # DB에 문의와 답변 저장
+                    self._save_inquiry_and_response(
+                        inquiry_id=str(inquiry_id),
+                        vendor_id=api_client.vendor_id,
+                        inquiry_type="callcenter",
+                        inquiry_content=inquiry_content,
+                        customer_name=customer_name,
+                        product_name="",
+                        response_text=response_text,
+                        status="submitted",
+                        submitted_by=reply_by
+                    )
                     return {
                         "inquiry_id": inquiry_id,
                         "status": "submitted",
