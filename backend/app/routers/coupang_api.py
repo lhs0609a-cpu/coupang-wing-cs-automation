@@ -1,17 +1,19 @@
 """
 Coupang Open API Router
 """
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Request, Depends
 from pydantic import BaseModel
 from loguru import logger
 from typing import Optional, List
 from datetime import datetime, timedelta
 import requests
+from sqlalchemy.orm import Session
 from ..services.coupang_api_client import CoupangAPIClient
 from ..services.ai_response_generator import AIResponseGenerator
 from ..config import settings
-from ..database import SessionLocal
+from ..database import SessionLocal, get_db
 from ..models.automation_log import AutomationExecutionLog
+from ..models import CoupangAccount
 
 
 router = APIRouter(prefix="/coupang-api", tags=["Coupang Open API"])
@@ -63,20 +65,47 @@ class AutoAnswerRequest(BaseModel):
     account_id: Optional[int] = None  # Coupang 계정 ID (DB에서 조회)
 
 
+class TestConnectionRequest(BaseModel):
+    """API 연결 테스트 요청"""
+    account_id: Optional[int] = None
+    credentials: Optional[CoupangAPICredentials] = None
+
+
 @router.post("/test-connection")
-async def test_connection(credentials: Optional[CoupangAPICredentials] = None):
+async def test_connection(
+    request: Optional[TestConnectionRequest] = None,
+    db: Session = Depends(get_db)
+):
     """
     Coupang API 연결 테스트
 
     Args:
-        credentials: 쿠팡 API 인증 정보 (없으면 환경 변수 사용)
+        request: account_id 또는 credentials (없으면 환경 변수 사용)
 
     Returns:
         연결 상태
     """
     try:
-        # API 클라이언트 생성
-        client = _create_client(credentials)
+        client = None
+
+        # account_id가 있으면 DB에서 계정 정보 조회
+        if request and request.account_id:
+            account = db.query(CoupangAccount).filter(CoupangAccount.id == request.account_id).first()
+            if account:
+                account_data = account.to_dict(include_keys=True)
+                client = CoupangAPIClient(
+                    access_key=account_data.get('access_key'),
+                    secret_key=account_data.get('secret_key'),
+                    vendor_id=account_data.get('vendor_id')
+                )
+
+        # credentials가 있으면 사용
+        if not client and request and request.credentials:
+            client = _create_client(request.credentials)
+
+        # 둘 다 없으면 기본값 사용
+        if not client:
+            client = _create_client()
 
         # 오늘 날짜로 테스트 조회
         today = datetime.now().strftime("%Y-%m-%d")

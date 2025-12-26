@@ -187,6 +187,19 @@ app.include_router(naver_delivery_sync.router, prefix="/api")
 app.include_router(auto_mode.router, prefix="/api")
 
 
+# 서버 outbound IP 확인 엔드포인트
+@app.get("/api/server-ip")
+async def get_server_ip():
+    """서버의 outbound IP 주소 확인"""
+    import httpx
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get("https://api.ipify.org?format=json", timeout=10)
+            return response.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # Explicit OPTIONS handler for CORS preflight (fallback)
 @app.options("/{rest_of_path:path}")
 async def preflight_handler(rest_of_path: str):

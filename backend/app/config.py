@@ -28,8 +28,12 @@ class Settings(BaseSettings):
     NAVER_API_BASE_URL: str = "https://openapi.naver.com"
 
     # Database Settings
-    # Use absolute path to ensure consistent DB location
-    DATABASE_URL: str = f"sqlite:///{Path(__file__).resolve().parent.parent / 'database' / 'coupang_cs.db'}"
+    # Use /data for cloud (fly.io persistent volume), local path for development
+    DATABASE_URL: str = (
+        "sqlite:////data/coupang_cs.db"
+        if os.environ.get("ENVIRONMENT") == "production"
+        else f"sqlite:///{Path(__file__).resolve().parent.parent / 'database' / 'coupang_cs.db'}"
+    )
 
     # Redis Settings
     REDIS_URL: str = "redis://localhost:6379/0"

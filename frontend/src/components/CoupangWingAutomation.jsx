@@ -201,17 +201,20 @@ const CoupangWingAutomation = ({ apiBaseUrl }) => {
 
     try {
       const selectedAccount = getSelectedAccount()
-      const credentials = selectedAccount ? {
-        access_key: selectedAccount.access_key,
-        secret_key: selectedAccount.secret_key,
-        vendor_id: selectedAccount.vendor_id,
-        wing_username: selectedAccount.wing_username
+      const requestBody = selectedAccount ? {
+        account_id: selectedAccount.id,
+        credentials: {
+          access_key: selectedAccount.access_key,
+          secret_key: selectedAccount.secret_key,
+          vendor_id: selectedAccount.vendor_id,
+          wing_username: selectedAccount.wing_username
+        }
       } : null
 
       const response = await fetch(`${apiBaseUrl}/coupang-api/test-connection`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(credentials)
+        body: JSON.stringify(requestBody)
       })
 
       const data = await response.json()

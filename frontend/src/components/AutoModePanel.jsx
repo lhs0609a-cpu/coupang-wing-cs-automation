@@ -47,16 +47,22 @@ const AutoModePanel = ({ apiBaseUrl }) => {
   useEffect(() => {
     const loadAccounts = async () => {
       try {
+        console.log('[AutoModePanel] 계정 목록 로드 시작, apiBaseUrl:', apiBaseUrl)
         const response = await fetch(`${apiBaseUrl}/coupang-accounts`)
+        console.log('[AutoModePanel] API 응답 상태:', response.status)
         if (response.ok) {
           const data = await response.json()
+          console.log('[AutoModePanel] 로드된 계정 목록:', data)
           setAccounts(data)
           if (data.length > 0 && !newSession.accountId) {
             setNewSession(prev => ({ ...prev, accountId: data[0].id }))
           }
+        } else {
+          const errorText = await response.text()
+          console.error('[AutoModePanel] API 응답 에러:', response.status, errorText)
         }
       } catch (error) {
-        console.error('계정 목록 로드 실패:', error)
+        console.error('[AutoModePanel] 계정 목록 로드 실패:', error)
       }
     }
 
