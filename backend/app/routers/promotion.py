@@ -165,16 +165,16 @@ async def get_contracts(account_id: int, db: Session = Depends(get_db)):
     try:
         service = CouponAutoSyncService(db)
         result = service.get_contracts(account_id)
-
-        if result["success"]:
-            return result
-        else:
-            raise HTTPException(status_code=400, detail=result["message"])
-    except HTTPException:
-        raise
+        # 항상 성공 응답 반환 (API 실패 시에도 빈 배열)
+        if result is None:
+            return {"success": False, "message": "결과가 없습니다", "contracts": []}
+        if not result.get("success"):
+            return {"success": False, "message": result.get("message", "조회 실패"), "contracts": []}
+        return result
     except Exception as e:
-        logger.error(f"Error getting contracts: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting contracts: {str(e)}", exc_info=True)
+        # 에러 시에도 빈 배열로 응답 (400 에러 발생 안함)
+        return {"success": False, "message": f"계약서 조회 실패: {str(e)}", "contracts": []}
 
 
 @router.get("/coupons/instant/{account_id}")
@@ -193,16 +193,16 @@ async def get_instant_coupons(
     try:
         service = CouponAutoSyncService(db)
         result = service.get_instant_coupons(account_id, status)
-
-        if result["success"]:
-            return result
-        else:
-            raise HTTPException(status_code=400, detail=result["message"])
-    except HTTPException:
-        raise
+        # 항상 성공 응답 반환 (API 실패 시에도 빈 배열)
+        if result is None:
+            return {"success": False, "message": "결과가 없습니다", "coupons": []}
+        if not result.get("success"):
+            return {"success": False, "message": result.get("message", "조회 실패"), "coupons": []}
+        return result
     except Exception as e:
-        logger.error(f"Error getting instant coupons: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting instant coupons: {str(e)}", exc_info=True)
+        # 에러 시에도 빈 배열로 응답 (400 에러 발생 안함)
+        return {"success": False, "message": f"즉시할인쿠폰 조회 실패: {str(e)}", "coupons": []}
 
 
 @router.get("/coupons/download/{account_id}")
