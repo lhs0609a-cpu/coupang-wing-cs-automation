@@ -1375,11 +1375,35 @@
 .stat.clickable {
   cursor: pointer;
   transition: all 0.2s ease;
+  position: relative;
+}
+
+.stat.clickable::after {
+  content: '👆 클릭';
+  position: absolute;
+  bottom: -4px;
+  font-size: 0.65rem;
+  color: #d97706;
+  opacity: 0.8;
 }
 
 .stat.clickable:hover {
-  transform: scale(1.05);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transform: scale(1.08);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+}
+
+.result-stats .stat.warning {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.15)) !important;
+  border: 2px solid #f59e0b !important;
+  cursor: pointer !important;
+}
+
+.result-stats .stat.warning .value {
+  color: #d97706 !important;
+}
+
+.result-stats .stat.warning:hover {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.35), rgba(217, 119, 6, 0.25)) !important;
 }
 
 .stat.warning {
