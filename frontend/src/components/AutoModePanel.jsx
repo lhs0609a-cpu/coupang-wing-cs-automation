@@ -40,6 +40,10 @@ const AutoModePanel = ({ apiBaseUrl }) => {
   const [isGeneratingAI, setIsGeneratingAI] = useState(false)
   const [isSubmittingReply, setIsSubmittingReply] = useState(false)
 
+  // 특수 양식 처리 상태
+  const [processingSpecialForm, setProcessingSpecialForm] = useState({})
+  const [specialFormStatus, setSpecialFormStatus] = useState({})
+
   // 새 세션 생성 폼
   const [showNewForm, setShowNewForm] = useState(false)
   const [newSession, setNewSession] = useState({
@@ -359,6 +363,72 @@ const AutoModePanel = ({ apiBaseUrl }) => {
     } finally {
       setIsSubmittingReply(false)
     }
+  }
+
+  // 특수 양식 상태 확인
+  const checkSpecialFormStatus = async (accountId) => {
+    try {
+      const response = await fetch(`${apiBaseUrl}/special-form/status/${accountId}`)
+      if (response.ok) {
+        const data = await response.json()
+        setSpecialFormStatus(prev => ({ ...prev, [accountId]: data }))
+        return data
+      }
+    } catch (error) {
+      console.error('특수 양식 상태 확인 실패:', error)
+    }
+    return null
+  }
+
+  // 특수 양식 자동 처리
+  const processSpecialForm = async (inquiry) => {
+    const inquiryKey = `${inquiry.account_id}-${inquiry.inquiry_id}`
+
+    // Wing 비밀번호 상태 확인
+    const status = await checkSpecialFormStatus(inquiry.account_id)
+    if (!status?.can_process) {
+      alert(`특수 양식 처리 불가: ${status?.message || 'Wing 로그인 정보가 필요합니다'}`)
+      return
+    }
+
+    setProcessingSpecialForm(prev => ({ ...prev, [inquiryKey]: true }))
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/special-form/process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          account_id: inquiry.account_id,
+          inquiry_id: inquiry.inquiry_id,
+          inquiry_content: inquiry.inquiry_content || '',
+          customer_name: inquiry.customer_name || '고객',
+          special_reply_content: inquiry.special_reply_content || '',
+          special_link: inquiry.special_link,
+          ai_response: inquiry.response_text,
+          headless: true
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        alert('특수 양식 답변이 성공적으로 제출되었습니다!')
+        await loadFailedInquiries()
+      } else {
+        alert(`특수 양식 처리 실패: ${data.result?.error || '알 수 없는 오류'}`)
+      }
+    } catch (error) {
+      alert(`오류: ${error.message}`)
+    } finally {
+      setProcessingSpecialForm(prev => ({ ...prev, [inquiryKey]: false }))
+    }
+  }
+
+  // 특수 양식 케이스인지 확인
+  const isSpecialFormCase = (inquiry) => {
+    const content = inquiry.inquiry_content || inquiry.special_reply_content || ''
+    const keywords = ['coupa.ng', '링크를 클릭', '[판매자님 회신필요 사항]', '응답 제출을 위해']
+    return keywords.some(keyword => content.includes(keyword))
   }
 
   // 시간 포맷팅
@@ -797,6 +867,25 @@ const AutoModePanel = ({ apiBaseUrl }) => {
                             <Edit3 size={14} />
                             수동 답변
                           </button>
+                          {isSpecialFormCase(inquiry) && (
+                            <button
+                              className="action-btn special"
+                              onClick={() => processSpecialForm(inquiry)}
+                              disabled={processingSpecialForm[`${inquiry.account_id}-${inquiry.inquiry_id}`]}
+                            >
+                              {processingSpecialForm[`${inquiry.account_id}-${inquiry.inquiry_id}`] ? (
+                                <>
+                                  <RefreshCw size={14} className="spinning" />
+                                  처리 중...
+                                </>
+                              ) : (
+                                <>
+                                  <Zap size={14} />
+                                  특수 양식 자동 처리
+                                </>
+                              )}
+                            </button>
+                          )}
                           {inquiry.special_reply_content && (
                             <button
                               className="action-btn secondary"

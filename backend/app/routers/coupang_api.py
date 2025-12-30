@@ -762,7 +762,11 @@ async def auto_answer_call_center_inquiries(http_request: Request, request: Auto
             page_size=50
         )
 
-        if no_answer_response.get("code") != 200:
+        # API 응답 로깅 (디버깅용)
+        logger.info(f"고객센터 문의 조회 응답 (NO_ANSWER): code={no_answer_response.get('code')}, message={no_answer_response.get('message')}")
+        logger.debug(f"NO_ANSWER 응답 전체: {no_answer_response}")
+
+        if no_answer_response.get("code") not in [200, "200", "SUCCESS"]:
             raise HTTPException(
                 status_code=no_answer_response.get("code", 500),
                 detail=no_answer_response.get("message", "고객센터 문의 조회 실패")
@@ -776,7 +780,11 @@ async def auto_answer_call_center_inquiries(http_request: Request, request: Auto
             page_size=50
         )
 
-        if transfer_response.get("code") != 200:
+        # API 응답 로깅 (디버깅용)
+        logger.info(f"고객센터 문의 조회 응답 (TRANSFER): code={transfer_response.get('code')}, message={transfer_response.get('message')}")
+        logger.debug(f"TRANSFER 응답 전체: {transfer_response}")
+
+        if transfer_response.get("code") not in [200, "200", "SUCCESS"]:
             raise HTTPException(
                 status_code=transfer_response.get("code", 500),
                 detail=transfer_response.get("message", "고객센터 문의 조회 실패")

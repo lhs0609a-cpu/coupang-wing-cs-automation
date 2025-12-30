@@ -1,6 +1,6 @@
 # Fly.io 배포 설정
 app = "coupang-wing-cs-backend"
-primary_region = "nrt"  # Tokyo (가장 가까운 리전)
+primary_region = "nrt"  # Tokyo (한국에서 가장 가까운 리전)
 
 [build]
   dockerfile = "Dockerfile"

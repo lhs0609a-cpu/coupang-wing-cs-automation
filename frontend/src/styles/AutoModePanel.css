@@ -1412,6 +1412,22 @@
   background: var(--hover-bg);
 }
 
+.action-btn.special {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: white;
+}
+
+.action-btn.special:hover {
+  background: linear-gradient(135deg, #d97706, #b45309);
+  transform: translateY(-1px);
+}
+
+.action-btn.special:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* Manual Reply Modal */
 .manual-reply-overlay {
   position: fixed;

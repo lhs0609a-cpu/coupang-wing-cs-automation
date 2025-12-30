@@ -1156,7 +1156,11 @@ class CouponAutoSyncService:
                             if int(contract_id_in_response) == int(config_contract_id):
                                 contract_end_str = contract.get("end")
                                 if contract_end_str:
-                                    contract_end_date = datetime.strptime(contract_end_str, "%Y-%m-%d %H:%M:%S")
+                                    # timezone-naive datetime을 KST로 변환
+                                    import pytz
+                                    kst = pytz.timezone('Asia/Seoul')
+                                    naive_dt = datetime.strptime(contract_end_str, "%Y-%m-%d %H:%M:%S")
+                                    contract_end_date = kst.localize(naive_dt)
                                     logger.info(f"[AUTO-CREATE] Contract {config.contract_id} ends at: {contract_end_date}")
                                 break
                         except (ValueError, TypeError):

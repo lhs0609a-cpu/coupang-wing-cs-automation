@@ -10,7 +10,7 @@ import sys
 
 from .config import settings
 from .database import init_db, engine
-from .routers import inquiries, responses, automation, wing_web, advanced, ux_features, websocket, monitoring, batch, port_management, coupang_api, coupang_accounts, return_management, naver_api, naver_accounts, account_sets, promotion, naver_review, naverpay_delivery, naver_shopping, upload_monitoring, gpt_settings, issue_response, naver_delivery_sync, auto_mode
+from .routers import inquiries, responses, automation, wing_web, advanced, ux_features, websocket, monitoring, batch, port_management, coupang_api, coupang_accounts, return_management, naver_api, naver_accounts, account_sets, promotion, naver_review, naverpay_delivery, naver_shopping, upload_monitoring, gpt_settings, issue_response, naver_delivery_sync, auto_mode, special_form
 from .scheduler import get_scheduler
 from .services.monitoring import get_monitor
 
@@ -185,6 +185,7 @@ app.include_router(gpt_settings.router, prefix="/api")
 app.include_router(issue_response.router, prefix="/api")
 app.include_router(naver_delivery_sync.router, prefix="/api")
 app.include_router(auto_mode.router, prefix="/api")
+app.include_router(special_form.router)  # prefix already included in router
 
 
 # 서버 outbound IP 확인 엔드포인트
