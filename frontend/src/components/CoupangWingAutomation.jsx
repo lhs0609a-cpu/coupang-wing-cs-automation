@@ -65,6 +65,11 @@ const CoupangWingAutomation = ({ apiBaseUrl }) => {
   const [responseHistory, setResponseHistory] = useState([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
 
+  // 특수 양식 처리 상태
+  const [showSkippedList, setShowSkippedList] = useState(false)
+  const [processingSpecialForm, setProcessingSpecialForm] = useState({})
+  const [specialFormStatus, setSpecialFormStatus] = useState(null)
+
   // 수동 입력 상태
   const [manualInquiry, setManualInquiry] = useState({
     type: 'product',
@@ -365,6 +370,101 @@ const CoupangWingAutomation = ({ apiBaseUrl }) => {
     } finally {
       setIsLoadingHistory(false)
     }
+  }
+
+  // 특수 양식 상태 확인
+  const checkSpecialFormStatus = async () => {
+    if (!selectedAccountId) return null
+    try {
+      const response = await fetch(`${apiBaseUrl}/special-form/status/${selectedAccountId}`)
+      if (response.ok) {
+        const data = await response.json()
+        setSpecialFormStatus(data)
+        return data
+      }
+    } catch (error) {
+      console.error('특수 양식 상태 확인 실패:', error)
+    }
+    return null
+  }
+
+  // 특수 양식 자동 처리
+  const processSpecialForm = async (inquiry) => {
+    const inquiryKey = inquiry.inquiryId || inquiry.inquiry_id
+
+    // Wing 비밀번호 상태 확인
+    const status = await checkSpecialFormStatus()
+    if (!status?.can_process) {
+      setError(`특수 양식 처리 불가: ${status?.message || 'Wing 로그인 정보가 필요합니다'}`)
+      return
+    }
+
+    setProcessingSpecialForm(prev => ({ ...prev, [inquiryKey]: true }))
+    addLog(`특수 양식 처리 시작: ${inquiryKey}`, 'info')
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/special-form/process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          account_id: selectedAccountId,
+          inquiry_id: inquiryKey,
+          inquiry_content: inquiry.content || inquiry.inquiryContent || '',
+          customer_name: inquiry.customerName || '고객',
+          special_reply_content: inquiry.special_reply_content || inquiry.content || '',
+          special_link: inquiry.special_link,
+          ai_response: inquiry.ai_response || inquiry.response_text,
+          headless: true
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        addLog(`특수 양식 처리 완료: ${inquiryKey}`, 'success')
+        // 결과에서 해당 항목 제거
+        if (autoResult?.skipped_inquiries) {
+          setAutoResult(prev => ({
+            ...prev,
+            skipped_inquiries: prev.skipped_inquiries.filter(i => (i.inquiryId || i.inquiry_id) !== inquiryKey),
+            statistics: {
+              ...prev.statistics,
+              skipped: Math.max(0, (prev.statistics?.skipped || 0) - 1),
+              answered: (prev.statistics?.answered || 0) + 1
+            }
+          }))
+        }
+      } else {
+        addLog(`특수 양식 처리 실패: ${data.result?.error || '알 수 없는 오류'}`, 'error')
+        setError(`특수 양식 처리 실패: ${data.result?.error || '알 수 없는 오류'}`)
+      }
+    } catch (error) {
+      addLog(`오류: ${error.message}`, 'error')
+      setError(`오류: ${error.message}`)
+    } finally {
+      setProcessingSpecialForm(prev => ({ ...prev, [inquiryKey]: false }))
+    }
+  }
+
+  // 특수 양식 전체 처리
+  const processAllSpecialForms = async () => {
+    if (!autoResult?.skipped_inquiries?.length) return
+
+    const status = await checkSpecialFormStatus()
+    if (!status?.can_process) {
+      setError(`특수 양식 처리 불가: ${status?.message || 'Wing 로그인 정보가 필요합니다'}`)
+      return
+    }
+
+    addLog(`특수 양식 일괄 처리 시작: ${autoResult.skipped_inquiries.length}건`, 'info')
+
+    for (const inquiry of autoResult.skipped_inquiries) {
+      await processSpecialForm(inquiry)
+      // 다음 처리 전 잠시 대기
+      await new Promise(resolve => setTimeout(resolve, 2000))
+    }
+
+    addLog('특수 양식 일괄 처리 완료', 'success')
   }
 
   // 탭 변경 시 데이터 로드
@@ -782,11 +882,67 @@ const CoupangWingAutomation = ({ apiBaseUrl }) => {
                         <span className="label">실패</span>
                         <span className="value">{autoResult.statistics?.failed || 0}</span>
                       </div>
-                      <div className="stat">
+                      <div
+                        className={`stat ${(autoResult.statistics?.skipped || 0) > 0 ? 'clickable warning' : ''}`}
+                        onClick={() => (autoResult.statistics?.skipped || 0) > 0 && setShowSkippedList(!showSkippedList)}
+                        title={autoResult.statistics?.skipped > 0 ? '클릭하여 특수 양식 문의 확인' : ''}
+                      >
                         <span className="label">건너뜀</span>
                         <span className="value">{autoResult.statistics?.skipped || 0}</span>
                       </div>
                     </div>
+
+                    {/* 건너뜀(특수 양식) 문의 목록 */}
+                    {showSkippedList && autoResult.skipped_inquiries?.length > 0 && (
+                      <motion.div
+                        className="skipped-inquiries-section"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                      >
+                        <div className="skipped-header">
+                          <h6>⚡ 특수 양식 문의 ({autoResult.skipped_inquiries.length}건)</h6>
+                          <p>coupa.ng 링크 클릭이 필요한 문의입니다</p>
+                          <button
+                            className="process-all-btn"
+                            onClick={processAllSpecialForms}
+                            disabled={Object.values(processingSpecialForm).some(v => v)}
+                          >
+                            <Zap size={16} />
+                            <span>전체 자동 처리</span>
+                          </button>
+                        </div>
+                        <div className="skipped-list">
+                          {autoResult.skipped_inquiries.map((inquiry, idx) => {
+                            const inquiryKey = inquiry.inquiryId || inquiry.inquiry_id
+                            const isProcessing = processingSpecialForm[inquiryKey]
+                            return (
+                              <div key={inquiryKey || idx} className="skipped-item">
+                                <div className="skipped-item-info">
+                                  <span className="inquiry-id">#{inquiryKey}</span>
+                                  <span className="customer-name">{inquiry.customerName || inquiry.customer_name || '고객'}</span>
+                                </div>
+                                <div className="skipped-item-content">
+                                  {(inquiry.content || inquiry.inquiryContent || '').substring(0, 100)}...
+                                </div>
+                                <div className="skipped-item-actions">
+                                  <button
+                                    className="special-form-btn"
+                                    onClick={() => processSpecialForm(inquiry)}
+                                    disabled={isProcessing}
+                                  >
+                                    {isProcessing ? (
+                                      <><Loader size={14} className="spinner" /> 처리 중...</>
+                                    ) : (
+                                      <><Zap size={14} /> 특수 양식 자동 처리</>
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </motion.div>
+                    )}
                   </motion.div>
                 )}
               </div>

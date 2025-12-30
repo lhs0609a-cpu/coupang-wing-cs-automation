@@ -807,6 +807,7 @@ async def auto_answer_call_center_inquiries(http_request: Request, request: Auto
         }
 
         results = []
+        skipped_inquiries = []  # 특수 양식 문의 목록
 
         # NO_ANSWER 문의 처리 (답변 작성)
         logger.info(f"===== NO_ANSWER 문의 처리 시작 ({len(no_answer_inquiries)}개) =====")
@@ -847,6 +848,20 @@ async def auto_answer_call_center_inquiries(http_request: Request, request: Auto
                             if keyword in reply_content:
                                 is_special_case = True
                                 logger.info(f"고객센터 문의 {inquiry_id}: 특수 양식 요구 케이스 감지, 건너뜀")
+                                # 특수 케이스 목록에 추가
+                                skipped_inquiries.append({
+                                    "inquiry_id": inquiry_id,
+                                    "inquiryId": inquiry_id,
+                                    "content": inquiry_content,
+                                    "inquiryContent": inquiry_content,
+                                    "customer_name": inquiry.get("buyerName", "고객"),
+                                    "customerName": inquiry.get("buyerName", "고객"),
+                                    "special_reply_content": reply_content,
+                                    "special_link": None,  # 링크 추출은 프론트엔드에서 또는 나중에
+                                    "parent_answer_id": parent_answer_id,
+                                    "reason": f"특수 양식 키워드 감지: {keyword}"
+                                })
+                                stats["skipped"] += 1
                                 break
 
                         break
@@ -856,26 +871,16 @@ async def auto_answer_call_center_inquiries(http_request: Request, request: Auto
                     stats["skipped"] += 1
                     continue
 
-                # AI로 답변 생성
+                # 특수 케이스는 건너뜀 (이미 skipped_inquiries에 추가됨)
                 if is_special_case:
-                    # 특수 케이스: 링크 답변 요구 시 안내 답변 생성
-                    logger.info(f"고객센터 문의 {inquiry_id}: 특수 양식 케이스, 안내 답변 생성")
-                    answer_content = """안녕하세요, 고객님.
+                    continue
 
-문의 주신 내용을 확인하였습니다. 해당 문의는 상담사가 요청한 특정 양식을 통해 답변이 필요한 사항입니다.
-
-원활한 처리를 위해 상담사가 제공한 링크를 통해 회신해 주시기 바랍니다. 링크를 통한 답변이 완료되면 보다 신속하게 처리가 가능합니다.
-
-추가로 궁금하신 사항이 있으시면 언제든지 문의해주세요.
-
-감사합니다."""
-                else:
-                    # 일반 케이스: AI로 답변 생성
-                    generated = ai_generator.generate_response_from_text(
-                        inquiry_content,
-                        customer_name=inquiry.get("buyerName", "고객")
-                    )
-                    answer_content = generated.get("response_text", "") if generated else ""
+                # AI로 답변 생성 (일반 케이스만 - 특수 케이스는 위에서 continue됨)
+                generated = ai_generator.generate_response_from_text(
+                    inquiry_content,
+                    customer_name=inquiry.get("buyerName", "고객")
+                )
+                answer_content = generated.get("response_text", "") if generated else ""
 
                 if not answer_content:
                     logger.error(f"고객센터 문의 {inquiry_id}: 답변 생성 실패")
@@ -976,7 +981,8 @@ async def auto_answer_call_center_inquiries(http_request: Request, request: Auto
             "success": True,
             "message": f"고객센터 자동화 완료: {stats['answered']}개 답변, {stats['confirmed']}개 확인완료 (총 {total_inquiries}개)",
             "statistics": stats,
-            "results": results
+            "results": results,
+            "skipped_inquiries": skipped_inquiries  # 특수 양식 문의 목록
         }
 
     except Exception as e:
