@@ -47,6 +47,7 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
   const [bulkApplyInProgress, setBulkApplyInProgress] = useState(false)
   const [bulkApplyProgress, setBulkApplyProgress] = useState(null)
   const [copiedPolicies, setCopiedPolicies] = useState(null)  // 복사한 쿠폰 정책
+  const [policySourceAccount, setPolicySourceAccount] = useState(null)  // 정책 복사할 원본 계정
 
   // 쿠폰 설정 폼 상태
   const [couponForm, setCouponForm] = useState({
@@ -255,22 +256,21 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
 
   // 다운로드쿠폰 단건 조회 및 정책 복사 (쿠폰 ID로 직접 조회)
   const fetchDownloadCouponById = async (copyPolicies = false) => {
-    if (!selectedAccount || !couponForm.download_coupon_id) {
-      showNotification('쿠폰 ID를 입력해주세요', 'error')
+    // 정책 복사 시에는 원본 계정 사용, 그 외에는 현재 선택된 계정 사용
+    const accountToUse = copyPolicies ? (policySourceAccount || selectedAccount) : selectedAccount
+
+    if (!accountToUse || !couponForm.download_coupon_id) {
+      showNotification(copyPolicies ? '원본 계정과 쿠폰 ID를 입력해주세요' : '쿠폰 ID를 입력해주세요', 'error')
       return
     }
 
     try {
       const response = await axios.get(
-        `${apiBaseUrl}/promotion/coupons/download/${selectedAccount}/${couponForm.download_coupon_id}`
+        `${apiBaseUrl}/promotion/coupons/download/${accountToUse}/${couponForm.download_coupon_id}`
       )
 
       if (response.data.success && response.data.coupon) {
         const coupon = response.data.coupon
-        setCouponForm(prev => ({
-          ...prev,
-          download_coupon_name: coupon.couponName || `쿠폰 #${coupon.couponId}`
-        }))
 
         // 정책 복사 옵션이 활성화된 경우
         if (copyPolicies && coupon.policies && coupon.policies.length > 0) {
@@ -281,10 +281,15 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
             ...prev,
             download_coupon_title_template: templateName
           }))
-          showNotification(`쿠폰 정책 ${coupon.policies.length}개가 복사되었습니다`, 'success')
+          const sourceAccountName = accounts.find(a => a.id === accountToUse)?.name || ''
+          showNotification(`${sourceAccountName} 계정에서 쿠폰 정책 ${coupon.policies.length}개가 복사되었습니다`, 'success')
         } else if (copyPolicies) {
           showNotification('이 쿠폰에는 복사할 정책이 없습니다', 'warning')
         } else {
+          setCouponForm(prev => ({
+            ...prev,
+            download_coupon_name: coupon.couponName || `쿠폰 #${coupon.couponId}`
+          }))
           showNotification(`쿠폰 조회 성공: ${coupon.couponName}`, 'success')
         }
       } else {
@@ -292,7 +297,8 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
       }
     } catch (error) {
       console.error('Failed to fetch download coupon:', error)
-      showNotification('쿠폰 조회에 실패했습니다', 'error')
+      const accountName = accounts.find(a => a.id === accountToUse)?.name || ''
+      showNotification(`${accountName} 계정에서 쿠폰 조회에 실패했습니다. 해당 계정의 쿠폰 ID인지 확인해주세요.`, 'error')
     }
   }
 
@@ -1131,6 +1137,23 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
 
                     {/* 기존 쿠폰에서 정책 복사 */}
                     <div className="form-row required">
+                      <label>정책 복사할 원본 계정 <span className="required-mark">*</span></label>
+                      <select
+                        className="source-account-select"
+                        value={policySourceAccount || ''}
+                        onChange={(e) => setPolicySourceAccount(e.target.value ? parseInt(e.target.value) : null)}
+                      >
+                        <option value="">-- 원본 계정 선택 --</option>
+                        {accounts.map(account => (
+                          <option key={account.id} value={account.id}>
+                            {account.name} ({account.vendor_id})
+                          </option>
+                        ))}
+                      </select>
+                      <p className="help-text">정책을 복사할 쿠폰이 있는 계정을 선택하세요</p>
+                    </div>
+
+                    <div className="form-row required">
                       <label>정책 복사할 기존 쿠폰 ID <span className="required-mark">*</span></label>
                       <div className="input-with-button">
                         <input
@@ -1145,13 +1168,13 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
                         <button
                           className="fetch-coupon-btn copy-policy"
                           onClick={() => fetchDownloadCouponById(true)}
-                          disabled={!couponForm.download_coupon_id}
+                          disabled={!couponForm.download_coupon_id || !policySourceAccount}
                         >
                           <Search size={14} />
                           정책 복사
                         </button>
                       </div>
-                      <p className="help-text">기존에 생성한 쿠폰의 할인 정책을 복사해서 새 쿠폰에 적용합니다</p>
+                      <p className="help-text">선택한 원본 계정의 쿠폰에서 할인 정책을 복사합니다</p>
                     </div>
 
                     {/* 복사된 정책 표시 */}

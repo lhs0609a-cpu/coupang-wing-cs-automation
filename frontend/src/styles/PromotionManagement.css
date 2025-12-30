@@ -99,6 +99,50 @@
   background: #e5e7eb;
 }
 
+/* 정책 복사 원본 계정 선택 */
+.source-account-select {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 2px solid #f59e0b;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(217, 119, 6, 0.1) 100%);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.source-account-select:hover {
+  border-color: #d97706;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.15) 100%);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+.source-account-select:focus {
+  outline: none;
+  border-color: #d97706;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
+}
+
+.source-account-select option {
+  background: #1a1a24;
+  color: #ffffff;
+  padding: 12px;
+  font-weight: 600;
+}
+
+[data-theme="light"] .source-account-select {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(217, 119, 6, 0.08) 100%);
+  border-color: #d97706;
+  color: #1f2937;
+}
+
+[data-theme="light"] .source-account-select option {
+  background: #ffffff;
+  color: #1f2937;
+}
+
 .refresh-btn {
   display: flex;
   align-items: center;
