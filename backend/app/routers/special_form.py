@@ -30,6 +30,7 @@ class ProcessSpecialFormRequest(BaseModel):
     special_reply_content: str
     special_link: Optional[str] = None
     ai_response: Optional[str] = None
+    manual_response: Optional[str] = None  # 사용자가 직접 입력한 답변
     headless: bool = True
 
 
@@ -169,9 +170,12 @@ async def process_special_form(
                 special_link=request.special_link
             )
 
+            # manual_response가 있으면 사용, 없으면 ai_response 사용
+            response_text = request.manual_response or request.ai_response
+
             result = await automation.process_special_inquiry(
                 inquiry,
-                ai_response=request.ai_response
+                ai_response=response_text
             )
 
             logger.info(f"특수 양식 처리 완료: inquiry={request.inquiry_id}, status={result['status']}")

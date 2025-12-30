@@ -70,6 +70,12 @@ const CoupangWingAutomation = ({ apiBaseUrl }) => {
   const [processingSpecialForm, setProcessingSpecialForm] = useState({})
   const [specialFormStatus, setSpecialFormStatus] = useState(null)
 
+  // 특수 양식 수동 답변 모달 상태
+  const [showSpecialFormModal, setShowSpecialFormModal] = useState(false)
+  const [selectedSpecialInquiry, setSelectedSpecialInquiry] = useState(null)
+  const [manualSpecialResponse, setManualSpecialResponse] = useState('')
+  const [isSubmittingSpecialForm, setIsSubmittingSpecialForm] = useState(false)
+
   // 수동 입력 상태
   const [manualInquiry, setManualInquiry] = useState({
     type: 'product',
@@ -465,6 +471,84 @@ const CoupangWingAutomation = ({ apiBaseUrl }) => {
     }
 
     addLog('특수 양식 일괄 처리 완료', 'success')
+  }
+
+  // 특수 양식 모달 열기
+  const openSpecialFormModal = (inquiry) => {
+    setSelectedSpecialInquiry(inquiry)
+    setManualSpecialResponse('')
+    setShowSpecialFormModal(true)
+  }
+
+  // 특수 양식 모달 닫기
+  const closeSpecialFormModal = () => {
+    setShowSpecialFormModal(false)
+    setSelectedSpecialInquiry(null)
+    setManualSpecialResponse('')
+  }
+
+  // 특수 양식 수동 답변 제출
+  const submitSpecialFormManual = async () => {
+    if (!selectedSpecialInquiry || !manualSpecialResponse.trim()) {
+      setError('답변 내용을 입력해주세요')
+      return
+    }
+
+    const inquiryKey = selectedSpecialInquiry.inquiryId || selectedSpecialInquiry.inquiry_id
+
+    // Wing 비밀번호 상태 확인
+    const status = await checkSpecialFormStatus()
+    if (!status?.can_process) {
+      setError(`특수 양식 처리 불가: ${status?.message || 'Wing 로그인 정보가 필요합니다'}`)
+      return
+    }
+
+    setIsSubmittingSpecialForm(true)
+    addLog(`특수 양식 수동 답변 제출 시작: ${inquiryKey}`, 'info')
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/special-form/process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          account_id: selectedAccountId,
+          inquiry_id: inquiryKey,
+          inquiry_content: selectedSpecialInquiry.content || selectedSpecialInquiry.inquiryContent || '',
+          customer_name: selectedSpecialInquiry.customerName || selectedSpecialInquiry.customer_name || '고객',
+          special_reply_content: selectedSpecialInquiry.special_reply_content || selectedSpecialInquiry.content || '',
+          special_link: selectedSpecialInquiry.special_link,
+          manual_response: manualSpecialResponse,  // 사용자가 직접 입력한 답변
+          headless: true
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        addLog(`특수 양식 수동 답변 완료: ${inquiryKey}`, 'success')
+        // 결과에서 해당 항목 제거
+        if (autoResult?.skipped_inquiries) {
+          setAutoResult(prev => ({
+            ...prev,
+            skipped_inquiries: prev.skipped_inquiries.filter(i => (i.inquiryId || i.inquiry_id) !== inquiryKey),
+            statistics: {
+              ...prev.statistics,
+              skipped: Math.max(0, (prev.statistics?.skipped || 0) - 1),
+              answered: (prev.statistics?.answered || 0) + 1
+            }
+          }))
+        }
+        closeSpecialFormModal()
+      } else {
+        addLog(`특수 양식 처리 실패: ${data.result?.error || data.message || '알 수 없는 오류'}`, 'error')
+        setError(`특수 양식 처리 실패: ${data.result?.error || data.message || '알 수 없는 오류'}`)
+      }
+    } catch (error) {
+      addLog(`오류: ${error.message}`, 'error')
+      setError(`오류: ${error.message}`)
+    } finally {
+      setIsSubmittingSpecialForm(false)
+    }
   }
 
   // 탭 변경 시 데이터 로드
@@ -926,14 +1010,21 @@ const CoupangWingAutomation = ({ apiBaseUrl }) => {
                                 </div>
                                 <div className="skipped-item-actions">
                                   <button
-                                    className="special-form-btn"
+                                    className="special-form-btn view"
+                                    onClick={() => openSpecialFormModal(inquiry)}
+                                    disabled={isProcessing}
+                                  >
+                                    <Eye size={14} /> 상세보기 / 답변
+                                  </button>
+                                  <button
+                                    className="special-form-btn auto"
                                     onClick={() => processSpecialForm(inquiry)}
                                     disabled={isProcessing}
                                   >
                                     {isProcessing ? (
                                       <><Loader size={14} className="spinner" /> 처리 중...</>
                                     ) : (
-                                      <><Zap size={14} /> 특수 양식 자동 처리</>
+                                      <><Zap size={14} /> AI 자동</>
                                     )}
                                   </button>
                                 </div>
@@ -1074,6 +1165,93 @@ const CoupangWingAutomation = ({ apiBaseUrl }) => {
             <span>{error}</span>
           </motion.div>
         )}
+
+        {/* 특수 양식 수동 답변 모달 */}
+        <AnimatePresence>
+          {showSpecialFormModal && selectedSpecialInquiry && (
+            <motion.div
+              className="special-form-modal-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={closeSpecialFormModal}
+            >
+              <motion.div
+                className="special-form-modal"
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="modal-header">
+                  <h4>특수 양식 문의 답변</h4>
+                  <button className="modal-close-btn" onClick={closeSpecialFormModal}>
+                    <XCircle size={20} />
+                  </button>
+                </div>
+
+                <div className="modal-body">
+                  {/* 문의 정보 */}
+                  <div className="inquiry-info-section">
+                    <div className="info-row">
+                      <span className="info-label">문의 ID:</span>
+                      <span className="info-value">#{selectedSpecialInquiry.inquiryId || selectedSpecialInquiry.inquiry_id}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">고객명:</span>
+                      <span className="info-value">{selectedSpecialInquiry.customerName || selectedSpecialInquiry.customer_name || '고객'}</span>
+                    </div>
+                    {selectedSpecialInquiry.special_link && (
+                      <div className="info-row">
+                        <span className="info-label">특수 링크:</span>
+                        <a href={selectedSpecialInquiry.special_link} target="_blank" rel="noopener noreferrer" className="special-link">
+                          {selectedSpecialInquiry.special_link}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 문의 내용 */}
+                  <div className="inquiry-content-section">
+                    <label>문의 내용:</label>
+                    <div className="inquiry-content-box">
+                      {selectedSpecialInquiry.content || selectedSpecialInquiry.inquiryContent || '내용 없음'}
+                    </div>
+                  </div>
+
+                  {/* 답변 입력 */}
+                  <div className="response-input-section">
+                    <label>답변 작성:</label>
+                    <textarea
+                      className="response-textarea"
+                      placeholder="고객에게 보낼 답변을 작성하세요..."
+                      value={manualSpecialResponse}
+                      onChange={(e) => setManualSpecialResponse(e.target.value)}
+                      rows={8}
+                    />
+                  </div>
+                </div>
+
+                <div className="modal-footer">
+                  <button className="modal-btn cancel" onClick={closeSpecialFormModal}>
+                    취소
+                  </button>
+                  <button
+                    className="modal-btn submit"
+                    onClick={submitSpecialFormManual}
+                    disabled={isSubmittingSpecialForm || !manualSpecialResponse.trim()}
+                  >
+                    {isSubmittingSpecialForm ? (
+                      <><Loader size={16} className="spinner" /> 제출 중...</>
+                    ) : (
+                      <><Send size={16} /> 답변 제출</>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </motion.div>
   )
