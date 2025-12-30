@@ -966,38 +966,74 @@ const CoupangWingAutomation = ({ apiBaseUrl }) => {
                       <p>답변 내역이 없습니다</p>
                     </div>
                   ) : (
-                    responseHistory.map((item, index) => (
-                      <motion.div
-                        key={item.id || index}
-                        className="history-card"
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                      >
-                        <div className="history-meta">
-                          <span className={`type-badge ${item.type}`}>
-                            {item.type === 'product' ? '상품문의' : '고객센터'}
-                          </span>
-                          <span className="history-date">
-                            <Clock size={14} />
-                            {item.createdAt || item.answeredAt}
-                          </span>
-                        </div>
-                        {item.productName && (
-                          <div className="history-product">{item.productName}</div>
-                        )}
-                        <div className="history-question">
-                          <strong>문의:</strong> {item.question || item.inquiryContent}
-                        </div>
-                        <div className="history-answer">
-                          <strong>답변:</strong> {item.answer || item.response}
-                        </div>
-                        <div className={`history-status ${item.status}`}>
-                          {item.status === 'success' ? <CheckCircle size={14} /> : <XCircle size={14} />}
-                          <span>{item.status === 'success' ? '제출 완료' : '제출 실패'}</span>
-                        </div>
-                      </motion.div>
-                    ))
+                    responseHistory.map((item, index) => {
+                      // 백엔드 응답 필드 매핑
+                      const inquiryType = item.inquiry_type || item.type || 'callcenter'
+                      const createdAt = item.created_at || item.createdAt || item.answeredAt
+                      const productName = item.product_name || item.productName
+                      const questionText = item.inquiry_text || item.question || item.inquiryContent || ''
+                      const answerText = item.response_text || item.answer || item.response || ''
+                      const statusValue = item.status || 'pending'
+                      const customerName = item.customer_name || item.customerName || ''
+
+                      // 날짜 포맷팅
+                      const formatDate = (dateStr) => {
+                        if (!dateStr) return ''
+                        try {
+                          const date = new Date(dateStr)
+                          return date.toLocaleString('ko-KR', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })
+                        } catch {
+                          return dateStr
+                        }
+                      }
+
+                      return (
+                        <motion.div
+                          key={item.id || index}
+                          className="history-card"
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: index * 0.05 }}
+                        >
+                          <div className="history-meta">
+                            <span className={`type-badge ${inquiryType}`}>
+                              {inquiryType === 'product' || inquiryType === 'online' ? '상품문의' : '고객센터'}
+                            </span>
+                            <span className="history-date">
+                              <Clock size={14} />
+                              {formatDate(createdAt)}
+                            </span>
+                            {customerName && (
+                              <span className="customer-name">{customerName}</span>
+                            )}
+                          </div>
+                          {productName && (
+                            <div className="history-product">{productName}</div>
+                          )}
+                          <div className="history-question">
+                            <strong>문의:</strong> {questionText || '(문의 내용 없음)'}
+                          </div>
+                          <div className="history-answer">
+                            <strong>답변:</strong> {answerText || '(답변 없음)'}
+                          </div>
+                          <div className={`history-status ${statusValue === 'submitted' || statusValue === 'success' ? 'success' : statusValue}`}>
+                            {(statusValue === 'submitted' || statusValue === 'success') ? <CheckCircle size={14} /> : <XCircle size={14} />}
+                            <span>
+                              {statusValue === 'submitted' || statusValue === 'success' ? '제출 완료' :
+                               statusValue === 'pending' ? '대기 중' :
+                               statusValue === 'approved' ? '승인됨' :
+                               statusValue === 'failed' ? '실패' : statusValue}
+                            </span>
+                          </div>
+                        </motion.div>
+                      )
+                    })
                   )}
                 </div>
               </div>

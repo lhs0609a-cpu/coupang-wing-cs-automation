@@ -635,7 +635,7 @@ async def get_call_center_inquiries(
     page_size: int = 50
 ):
     """
-    쿠팡 고객센터 문의 조회
+    쿠팡 고객센터 문의 조회 (GET - 환경변수 인증)
 
     Args:
         start_date: 조회시작일 (yyyy-MM-dd)
@@ -674,6 +674,75 @@ async def get_call_center_inquiries(
     except Exception as e:
         logger.error(f"고객센터 문의 조회 실패: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class CallCenterInquiryRequest(BaseModel):
+    """고객센터 문의 조회 요청"""
+    credentials: Optional[CoupangAPICredentials] = None
+    account_id: Optional[int] = None
+    answered_type: str = "NOANSWER"  # 'NOANSWER', 'ANSWER', 'ALL'
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+
+
+@router.post("/call-center-inquiries")
+async def post_call_center_inquiries(request: CallCenterInquiryRequest):
+    """
+    쿠팡 고객센터 문의 조회 (POST - credentials body로 전달)
+
+    프론트엔드에서 계정별로 문의를 조회할 때 사용
+    """
+    db = SessionLocal()
+    try:
+        # 기본 날짜 설정
+        end_date = request.end_date or datetime.now().strftime("%Y-%m-%d")
+        start_date = request.start_date or (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
+
+        # account_id로 DB에서 계정 정보 가져오기
+        if request.account_id:
+            from ..models.coupang_account import CoupangAccount
+            selected_account = db.query(CoupangAccount).filter(CoupangAccount.id == request.account_id).first()
+            if selected_account:
+                request.credentials = CoupangAPICredentials(
+                    access_key=selected_account.access_key,
+                    secret_key=selected_account.secret_key,
+                    vendor_id=selected_account.vendor_id,
+                    wing_username=selected_account.wing_username
+                )
+
+        # 클라이언트 생성
+        client = _create_client(request.credentials)
+
+        # answered_type을 API status로 변환
+        status_map = {
+            "NOANSWER": "NO_ANSWER",
+            "ANSWER": "ANSWER",
+            "ALL": "NONE"
+        }
+        status = status_map.get(request.answered_type, "NO_ANSWER")
+
+        result = client.get_call_center_inquiries(
+            start_date=start_date,
+            end_date=end_date,
+            status=status,
+            page_size=50
+        )
+
+        # 응답 데이터 변환
+        inquiries = result.get("data", {}).get("content", [])
+
+        return {
+            "success": True,
+            "inquiries": inquiries,
+            "total": len(inquiries),
+            "message": f"{start_date} ~ {end_date} 기간 고객센터 문의 조회 완료"
+        }
+
+    except Exception as e:
+        logger.error(f"고객센터 문의 조회 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
 
 
 @router.post("/call-center-inquiries/auto-answer")
