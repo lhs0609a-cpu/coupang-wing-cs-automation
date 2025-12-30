@@ -99,11 +99,39 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
   // Load config when account changes
   useEffect(() => {
     if (selectedAccount) {
+      // 계정 변경 시 먼저 상태 초기화
+      setCopiedPolicies(null)
+      setConfig(null)
+      setCouponForm({
+        is_enabled: false,
+        apply_delay_days: 0,
+        contract_id: '',
+        instant_coupon_enabled: false,
+        instant_coupon_id: '',
+        instant_coupon_name: '',
+        instant_coupon_auto_create: true,
+        instant_coupon_title_template: '',
+        instant_coupon_duration_days: 30,
+        instant_coupon_discount: '',
+        instant_coupon_discount_type: 'RATE',
+        instant_coupon_max_discount_price: 10000,
+        download_coupon_enabled: false,
+        download_coupon_id: '',
+        download_coupon_name: '',
+        download_coupon_auto_create: true,
+        download_coupon_title_template: '',
+        download_coupon_duration_days: 30,
+        auto_apply_to_all: true,
+      })
+      setContracts([])
+      setInstantCoupons([])
+      setDownloadCoupons([])
+
+      // 새 계정 데이터 로드
       loadConfig()
       loadStatistics()
       loadBulkApplyProgress()
-      loadContracts()  // 계약서 목록 로드
-      // 계정 선택하면 쿠폰 목록도 자동으로 로드
+      loadContracts()
       loadInstantCoupons('APPLIED')
       loadDownloadCoupons('IN_PROGRESS')
     }
@@ -159,9 +187,11 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
         download_coupon_duration_days: config.download_coupon_duration_days || 30,
         auto_apply_to_all: true,
       })
-      // 저장된 정책이 있으면 로드
+      // 저장된 정책이 있으면 로드, 없으면 초기화
       if (config.download_coupon_policies) {
         setCopiedPolicies(config.download_coupon_policies)
+      } else {
+        setCopiedPolicies(null)
       }
     }
   }, [config])
