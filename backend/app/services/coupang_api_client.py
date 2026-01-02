@@ -157,7 +157,7 @@ class CoupangAPIClient:
         Returns:
             API response
         """
-        path = f"/v2/providers/openapi/apis/api/v5/vendors/{self.vendor_id}/onlineInquiries/{inquiry_id}/replies"
+        path = f"/v2/providers/openapi/apis/api/v4/vendors/{self.vendor_id}/onlineInquiries/{inquiry_id}/replies"
 
         url = f"{self.BASE_URL}{path}"
         headers = self._get_headers("POST", path)
@@ -252,7 +252,7 @@ class CoupangAPIClient:
         Returns:
             API response
         """
-        path = f"/v2/providers/openapi/apis/api/v5/vendors/{self.vendor_id}/callCenterInquiries/{inquiry_id}/replies"
+        path = f"/v2/providers/openapi/apis/api/v4/vendors/{self.vendor_id}/callCenterInquiries/{inquiry_id}/replies"
 
         url = f"{self.BASE_URL}{path}"
         headers = self._get_headers("POST", path)
@@ -292,7 +292,7 @@ class CoupangAPIClient:
         Returns:
             API response
         """
-        path = f"/v2/providers/openapi/apis/api/v5/vendors/{self.vendor_id}/callCenterInquiries/{inquiry_id}/confirms"
+        path = f"/v2/providers/openapi/apis/api/v4/vendors/{self.vendor_id}/callCenterInquiries/{inquiry_id}/confirms"
 
         url = f"{self.BASE_URL}{path}"
         headers = self._get_headers("POST", path)
