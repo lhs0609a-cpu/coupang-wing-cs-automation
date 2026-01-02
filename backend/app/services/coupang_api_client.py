@@ -121,7 +121,7 @@ class CoupangAPIClient:
         Returns:
             API response
         """
-        path = f"/v2/providers/openapi/apis/api/v4/vendors/{self.vendor_id}/onlineInquiries"
+        path = f"/v2/providers/openapi/apis/api/v5/vendors/{self.vendor_id}/onlineInquiries"
         query = f"inquiryStartAt={start_date}&inquiryEndAt={end_date}&vendorId={self.vendor_id}&answeredType={answered_type}&pageSize={page_size}&pageNum={page_num}"
 
         url = f"{self.BASE_URL}{path}?{query}"
@@ -157,7 +157,7 @@ class CoupangAPIClient:
         Returns:
             API response
         """
-        path = f"/v2/providers/openapi/apis/api/v4/vendors/{self.vendor_id}/onlineInquiries/{inquiry_id}/replies"
+        path = f"/v2/providers/openapi/apis/api/v5/vendors/{self.vendor_id}/onlineInquiries/{inquiry_id}/replies"
 
         url = f"{self.BASE_URL}{path}"
         headers = self._get_headers("POST", path)
@@ -205,7 +205,7 @@ class CoupangAPIClient:
         Returns:
             API response
         """
-        path = f"/v2/providers/openapi/apis/api/v4/vendors/{self.vendor_id}/callCenterInquiries"
+        path = f"/v2/providers/openapi/apis/api/v5/vendors/{self.vendor_id}/callCenterInquiries"
 
         # Build query parameters
         params = [
@@ -252,7 +252,7 @@ class CoupangAPIClient:
         Returns:
             API response
         """
-        path = f"/v2/providers/openapi/apis/api/v4/vendors/{self.vendor_id}/callCenterInquiries/{inquiry_id}/replies"
+        path = f"/v2/providers/openapi/apis/api/v5/vendors/{self.vendor_id}/callCenterInquiries/{inquiry_id}/replies"
 
         url = f"{self.BASE_URL}{path}"
         headers = self._get_headers("POST", path)
@@ -292,7 +292,7 @@ class CoupangAPIClient:
         Returns:
             API response
         """
-        path = f"/v2/providers/openapi/apis/api/v4/vendors/{self.vendor_id}/callCenterInquiries/{inquiry_id}/confirms"
+        path = f"/v2/providers/openapi/apis/api/v5/vendors/{self.vendor_id}/callCenterInquiries/{inquiry_id}/confirms"
 
         url = f"{self.BASE_URL}{path}"
         headers = self._get_headers("POST", path)
