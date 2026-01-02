@@ -22,7 +22,13 @@ def get_encryption_key():
     """Get or create encryption key for sensitive data"""
     key = os.getenv("ENCRYPTION_KEY")
     if not key:
-        # 새로운 키 생성 (프로덕션에서는 환경 변수로 설정해야 함)
+        # 경고: 프로덕션에서는 반드시 ENCRYPTION_KEY 환경 변수를 설정해야 함
+        import warnings
+        warnings.warn(
+            "ENCRYPTION_KEY not set! Using auto-generated key. "
+            "This will cause data loss on restart. Set ENCRYPTION_KEY in .env file.",
+            UserWarning
+        )
         key = Fernet.generate_key().decode()
     return key.encode() if isinstance(key, str) else key
 

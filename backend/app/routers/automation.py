@@ -3,6 +3,7 @@ Automation API Router
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from pydantic import BaseModel
 from loguru import logger
 
@@ -10,6 +11,7 @@ from ..database import get_db
 from ..services.auto_workflow import AutoWorkflow
 from ..config import settings
 from ..services.ai_response_generator import AIResponseGenerator
+from ..exceptions import APIError, DatabaseError
 
 router = APIRouter(prefix="/automation", tags=["automation"])
 
@@ -33,6 +35,9 @@ def run_full_workflow(
     5. Auto-approve if safe
     6. Auto-submit to Coupang (if enabled)
     """
+    if request.limit < 1 or request.limit > 100:
+        raise HTTPException(status_code=400, detail="Limit must be between 1 and 100")
+
     try:
         workflow = AutoWorkflow(db)
         results = workflow.run_full_auto_workflow(
@@ -43,8 +48,15 @@ def run_full_workflow(
             "success": True,
             "results": results
         }
+    except APIError as e:
+        logger.error(f"API error in full workflow: {e.message}")
+        raise HTTPException(status_code=502, detail=e.message)
+    except SQLAlchemyError as e:
+        logger.error(f"Database error in full workflow: {str(e)}")
+        raise HTTPException(status_code=500, detail="Database error occurred")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error running full workflow: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to run full workflow")
 
 
 @router.post("/auto-process-and-submit")
@@ -55,6 +67,9 @@ def auto_process_and_submit(
     """
     Automatically process and submit responses (convenience endpoint)
     """
+    if limit < 1 or limit > 100:
+        raise HTTPException(status_code=400, detail="Limit must be between 1 and 100")
+
     try:
         workflow = AutoWorkflow(db)
         results = workflow.auto_process_and_submit(limit=limit)
@@ -62,8 +77,15 @@ def auto_process_and_submit(
             "success": True,
             "results": results
         }
+    except APIError as e:
+        logger.error(f"API error in auto-process-and-submit: {e.message}")
+        raise HTTPException(status_code=502, detail=e.message)
+    except SQLAlchemyError as e:
+        logger.error(f"Database error in auto-process-and-submit: {str(e)}")
+        raise HTTPException(status_code=500, detail="Database error occurred")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in auto-process-and-submit: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to process and submit")
 
 
 @router.post("/process-pending-approvals")
@@ -78,8 +100,12 @@ def process_pending_approvals(db: Session = Depends(get_db)):
             "success": True,
             "results": results
         }
+    except SQLAlchemyError as e:
+        logger.error(f"Database error processing pending approvals: {str(e)}")
+        raise HTTPException(status_code=500, detail="Database error occurred")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error processing pending approvals: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to process pending approvals")
 
 
 @router.get("/stats")
@@ -91,8 +117,12 @@ def get_automation_stats(db: Session = Depends(get_db)):
         workflow = AutoWorkflow(db)
         stats = workflow.get_workflow_stats()
         return stats
+    except SQLAlchemyError as e:
+        logger.error(f"Database error fetching automation stats: {str(e)}")
+        raise HTTPException(status_code=500, detail="Database error occurred")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error fetching automation stats: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch automation statistics")
 
 
 @router.get("/chatgpt/status")
@@ -147,7 +177,7 @@ def get_chatgpt_status():
             }
     except Exception as e:
         logger.error(f"Error checking ChatGPT status: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to check ChatGPT status")
 
 
 @router.post("/chatgpt/test-connection")

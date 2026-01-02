@@ -6,9 +6,11 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 from loguru import logger
+from sqlalchemy.exc import SQLAlchemyError
 
 from ..database import SessionLocal, get_db
 from ..services.coupon_auto_sync_service import CouponAutoSyncService
+from ..exceptions import NotFoundError, ValidationError as AppValidationError, APIError, DatabaseError
 from sqlalchemy.orm import Session
 
 
@@ -85,9 +87,12 @@ async def get_coupon_config(account_id: int, db: Session = Depends(get_db)):
                 "config": None,
                 "message": "설정이 없습니다. 새로 생성해주세요."
             }
+    except SQLAlchemyError as e:
+        logger.error(f"Database error getting coupon config: {str(e)}")
+        raise HTTPException(status_code=500, detail="데이터베이스 오류가 발생했습니다")
     except Exception as e:
         logger.error(f"Error getting coupon config: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="설정 조회에 실패했습니다")
 
 
 @router.post("/config/{account_id}")
@@ -114,9 +119,12 @@ async def create_or_update_config(
             "message": "설정이 저장되었습니다.",
             "config": config.to_dict()
         }
+    except SQLAlchemyError as e:
+        logger.error(f"Database error saving coupon config: {str(e)}")
+        raise HTTPException(status_code=500, detail="데이터베이스 오류가 발생했습니다")
     except Exception as e:
         logger.error(f"Error saving coupon config: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="설정 저장에 실패했습니다")
 
 
 @router.post("/config/{account_id}/toggle")
@@ -147,9 +155,12 @@ async def toggle_coupon_config(
             raise HTTPException(status_code=404, detail="설정을 찾을 수 없습니다.")
     except HTTPException:
         raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error toggling coupon config: {str(e)}")
+        raise HTTPException(status_code=500, detail="데이터베이스 오류가 발생했습니다")
     except Exception as e:
         logger.error(f"Error toggling coupon config: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="설정 변경에 실패했습니다")
 
 
 # ==================== 계약서/쿠폰 조회 API ====================
@@ -279,9 +290,12 @@ async def detect_new_products(
             raise HTTPException(status_code=400, detail=result["message"])
     except HTTPException:
         raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error detecting new products: {str(e)}")
+        raise HTTPException(status_code=500, detail="데이터베이스 오류가 발생했습니다")
     except Exception as e:
         logger.error(f"Error detecting new products: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="신규 상품 감지에 실패했습니다")
 
 
 @router.post("/sync/{account_id}/register")
@@ -326,9 +340,12 @@ async def register_products(
         }
     except HTTPException:
         raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error registering products: {str(e)}")
+        raise HTTPException(status_code=500, detail="데이터베이스 오류가 발생했습니다")
     except Exception as e:
         logger.error(f"Error registering products: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="상품 등록에 실패했습니다")
 
 
 @router.post("/sync/{account_id}/apply")
@@ -349,9 +366,12 @@ async def apply_coupons(account_id: int, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail=result["message"])
     except HTTPException:
         raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error applying coupons: {str(e)}")
+        raise HTTPException(status_code=500, detail="데이터베이스 오류가 발생했습니다")
     except Exception as e:
         logger.error(f"Error applying coupons: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="쿠폰 적용에 실패했습니다")
 
 
 @router.post("/sync/{account_id}/full")
@@ -367,14 +387,14 @@ async def run_full_sync(
         account_id: 쿠팡 계정 ID
     """
     try:
-        service = CouponAutoSyncService(db)
-
         # 백그라운드에서 실행
         def run_sync():
             db_session = SessionLocal()
             try:
                 sync_service = CouponAutoSyncService(db_session)
                 sync_service.run_auto_sync(account_id)
+            except Exception as e:
+                logger.error(f"Background sync error for account {account_id}: {str(e)}")
             finally:
                 db_session.close()
 
@@ -386,7 +406,7 @@ async def run_full_sync(
         }
     except Exception as e:
         logger.error(f"Error running full sync: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="동기화 시작에 실패했습니다")
 
 
 @router.post("/sync/{account_id}/bulk-apply")
@@ -414,6 +434,8 @@ async def bulk_apply_coupons(
                 sync_service = CouponAutoSyncService(db_session)
                 result = sync_service.apply_coupons_to_all_products(account_id, days_back, skip_applied)
                 logger.info(f"Bulk apply result: {result}")
+            except Exception as e:
+                logger.error(f"Background bulk apply error for account {account_id}: {str(e)}")
             finally:
                 db_session.close()
 
@@ -426,7 +448,7 @@ async def bulk_apply_coupons(
         }
     except Exception as e:
         logger.error(f"Error running bulk apply: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="일괄 적용 시작에 실패했습니다")
 
 
 @router.post("/sync/{account_id}/restart")
@@ -460,6 +482,8 @@ async def restart_bulk_apply(
                 sync_service = CouponAutoSyncService(db_session)
                 result = sync_service.apply_coupons_to_all_products(account_id, days_back, skip_applied)
                 logger.info(f"Bulk apply result: {result}")
+            except Exception as e:
+                logger.error(f"Background restart bulk apply error for account {account_id}: {str(e)}")
             finally:
                 db_session.close()
 
@@ -470,9 +494,12 @@ async def restart_bulk_apply(
             "success": True,
             "message": f"기존 작업을 취소하고 새로 시작합니다. ({skip_msg})"
         }
+    except SQLAlchemyError as e:
+        logger.error(f"Database error restarting bulk apply: {str(e)}")
+        raise HTTPException(status_code=500, detail="데이터베이스 오류가 발생했습니다")
     except Exception as e:
         logger.error(f"Error restarting bulk apply: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="재시작에 실패했습니다")
 
 
 # ==================== 진행 상황 조회 API ====================
@@ -500,9 +527,12 @@ async def get_bulk_apply_progress(account_id: int, db: Session = Depends(get_db)
                 "progress": None,
                 "message": "진행 중인 작업이 없습니다."
             }
+    except SQLAlchemyError as e:
+        logger.error(f"Database error getting bulk apply progress: {str(e)}")
+        raise HTTPException(status_code=500, detail="데이터베이스 오류가 발생했습니다")
     except Exception as e:
         logger.error(f"Error getting bulk apply progress: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="진행 상황 조회에 실패했습니다")
 
 
 @router.delete("/progress/{account_id}")
@@ -523,9 +553,12 @@ async def cancel_bulk_apply_progress(account_id: int, db: Session = Depends(get_
             raise HTTPException(status_code=400, detail=result["message"])
     except HTTPException:
         raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error cancelling bulk apply progress: {str(e)}")
+        raise HTTPException(status_code=500, detail="데이터베이스 오류가 발생했습니다")
     except Exception as e:
         logger.error(f"Error cancelling bulk apply progress: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="작업 취소에 실패했습니다")
 
 
 # ==================== 추적/이력 조회 API ====================
@@ -547,13 +580,21 @@ async def get_tracking_list(
         limit: 조회 개수
         offset: 시작 위치
     """
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=400, detail="limit은 1-500 사이여야 합니다")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset은 0 이상이어야 합니다")
+
     try:
         service = CouponAutoSyncService(db)
         result = service.get_tracking_list(account_id, status, limit, offset)
         return result
+    except SQLAlchemyError as e:
+        logger.error(f"Database error getting tracking list: {str(e)}")
+        raise HTTPException(status_code=500, detail="데이터베이스 오류가 발생했습니다")
     except Exception as e:
         logger.error(f"Error getting tracking list: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="추적 목록 조회에 실패했습니다")
 
 
 @router.get("/logs/{account_id}")
@@ -571,13 +612,21 @@ async def get_apply_logs(
         limit: 조회 개수
         offset: 시작 위치
     """
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=400, detail="limit은 1-500 사이여야 합니다")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset은 0 이상이어야 합니다")
+
     try:
         service = CouponAutoSyncService(db)
         result = service.get_apply_logs(account_id, limit, offset)
         return result
+    except SQLAlchemyError as e:
+        logger.error(f"Database error getting apply logs: {str(e)}")
+        raise HTTPException(status_code=500, detail="데이터베이스 오류가 발생했습니다")
     except Exception as e:
         logger.error(f"Error getting apply logs: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="적용 이력 조회에 실패했습니다")
 
 
 @router.get("/statistics/{account_id}")
@@ -592,9 +641,12 @@ async def get_statistics(account_id: int, db: Session = Depends(get_db)):
         service = CouponAutoSyncService(db)
         result = service.get_statistics(account_id)
         return result
+    except SQLAlchemyError as e:
+        logger.error(f"Database error getting statistics: {str(e)}")
+        raise HTTPException(status_code=500, detail="데이터베이스 오류가 발생했습니다")
     except Exception as e:
         logger.error(f"Error getting statistics: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="통계 조회에 실패했습니다")
 
 
 # ==================== 관리자 API ====================
@@ -613,6 +665,8 @@ async def run_sync_all_accounts(
             try:
                 sync_service = CouponAutoSyncService(db_session)
                 sync_service.run_auto_sync_all_accounts()
+            except Exception as e:
+                logger.error(f"Background sync all accounts error: {str(e)}")
             finally:
                 db_session.close()
 
@@ -624,4 +678,4 @@ async def run_sync_all_accounts(
         }
     except Exception as e:
         logger.error(f"Error running sync for all accounts: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="전체 동기화 시작에 실패했습니다")

@@ -222,6 +222,8 @@ function AppContent() {
                 onReject={handleReject}
                 loading={loading}
                 apiBaseUrl={apiBaseUrl}
+                showNotification={showNotification}
+                onRefresh={loadData}
               />
             </motion.div>
           )}

@@ -314,7 +314,7 @@ async def get_online_inquiries(
         raise
     except Exception as e:
         logger.error(f"상품별 고객문의 조회 실패: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="상품별 고객문의 조회에 실패했습니다")
 
 
 @router.post("/inquiries/online/{inquiry_id}/reply")
@@ -411,7 +411,7 @@ async def reply_to_online_inquiry(inquiry_id: int, request: InquiryReplyRequest)
         raise
     except Exception as e:
         logger.error(f"상품별 고객문의 답변 실패: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="상품별 고객문의 답변에 실패했습니다")
 
 
 @router.post("/inquiries/auto-answer")
@@ -620,7 +620,7 @@ async def auto_answer_inquiries(request: AutoAnswerRequest, http_request: Reques
             execution_log.error_message = str(e)
             db.commit()
 
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="자동 답변 처리에 실패했습니다")
 
     finally:
         db.close()
@@ -673,7 +673,7 @@ async def get_call_center_inquiries(
 
     except Exception as e:
         logger.error(f"고객센터 문의 조회 실패: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="고객센터 문의 조회에 실패했습니다")
 
 
 class CallCenterInquiryRequest(BaseModel):
@@ -740,7 +740,7 @@ async def post_call_center_inquiries(request: CallCenterInquiryRequest):
 
     except Exception as e:
         logger.error(f"고객센터 문의 조회 실패: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="고객센터 문의 조회에 실패했습니다")
     finally:
         db.close()
 
@@ -1066,7 +1066,7 @@ async def auto_answer_call_center_inquiries(http_request: Request, request: Auto
             execution_log.error_message = str(e)
             db.commit()
 
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="고객센터 자동 답변 처리에 실패했습니다")
 
     finally:
         db.close()

@@ -6,10 +6,12 @@ import re
 import json
 from typing import Dict, List, Tuple, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from loguru import logger
 
 from ..models import Inquiry
 from ..config import settings
+from ..exceptions import NotFoundError, ValidationError, APIError, DatabaseError
 
 
 class InquiryAnalyzer:
@@ -61,59 +63,78 @@ class InquiryAnalyzer:
 
         Returns:
             Analysis results dictionary
+
+        Raises:
+            ValidationError: If inquiry has no text
+            DatabaseError: If database operation fails
         """
+        if not inquiry:
+            raise ValidationError("Inquiry object is required")
+
+        if not inquiry.inquiry_text or not inquiry.inquiry_text.strip():
+            raise ValidationError("Inquiry text is empty")
+
         logger.info(f"Analyzing inquiry {inquiry.id}")
 
-        text = inquiry.inquiry_text.lower()
+        try:
+            text = inquiry.inquiry_text.lower()
 
-        # Classify category
-        category, confidence = self._classify_category(text)
+            # Classify category
+            category, confidence = self._classify_category(text)
 
-        # Extract keywords
-        keywords = self._extract_keywords(text)
+            # Extract keywords
+            keywords = self._extract_keywords(text)
 
-        # Assess risk level
-        risk_level = self._assess_risk_level(text, inquiry)
+            # Assess risk level
+            risk_level = self._assess_risk_level(text, inquiry)
 
-        # Check sentiment
-        sentiment = self._analyze_sentiment(text)
+            # Check sentiment
+            sentiment = self._analyze_sentiment(text)
 
-        # Calculate complexity
-        complexity = self._calculate_complexity(text, inquiry)
+            # Calculate complexity
+            complexity = self._calculate_complexity(text, inquiry)
 
-        # Determine if human review needed
-        requires_human = self._requires_human_review(
-            text, inquiry, risk_level, confidence, complexity
-        )
+            # Determine if human review needed
+            requires_human = self._requires_human_review(
+                text, inquiry, risk_level, confidence, complexity
+            )
 
-        # Check urgency
-        is_urgent = self._check_urgency(text)
+            # Check urgency
+            is_urgent = self._check_urgency(text)
 
-        # Update inquiry with analysis results
-        inquiry.classified_category = category
-        inquiry.confidence_score = confidence
-        inquiry.risk_level = risk_level
-        inquiry.keywords = json.dumps(keywords, ensure_ascii=False)
-        inquiry.sentiment = sentiment
-        inquiry.complexity_score = complexity
-        inquiry.requires_human = requires_human
-        inquiry.is_urgent = is_urgent
+            # Update inquiry with analysis results
+            inquiry.classified_category = category
+            inquiry.confidence_score = confidence
+            inquiry.risk_level = risk_level
+            inquiry.keywords = json.dumps(keywords, ensure_ascii=False)
+            inquiry.sentiment = sentiment
+            inquiry.complexity_score = complexity
+            inquiry.requires_human = requires_human
+            inquiry.is_urgent = is_urgent
 
-        self.db.commit()
+            self.db.commit()
 
-        result = {
-            "category": category,
-            "confidence": confidence,
-            "risk_level": risk_level,
-            "keywords": keywords,
-            "sentiment": sentiment,
-            "complexity": complexity,
-            "requires_human": requires_human,
-            "is_urgent": is_urgent
-        }
+            result = {
+                "category": category,
+                "confidence": confidence,
+                "risk_level": risk_level,
+                "keywords": keywords,
+                "sentiment": sentiment,
+                "complexity": complexity,
+                "requires_human": requires_human,
+                "is_urgent": is_urgent
+            }
 
-        logger.info(f"Analysis complete: {result}")
-        return result
+            logger.info(f"Analysis complete: {result}")
+            return result
+
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logger.error(f"Database error analyzing inquiry {inquiry.id}: {str(e)}")
+            raise DatabaseError(f"Failed to save analysis results: {str(e)}")
+        except Exception as e:
+            logger.error(f"Error analyzing inquiry {inquiry.id}: {str(e)}")
+            raise
 
     def _classify_category(self, text: str) -> Tuple[str, float]:
         """
@@ -346,19 +367,153 @@ class InquiryAnalyzer:
 
         Returns:
             Analysis summary
-        """
-        inquiry = self.db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
-        if not inquiry:
-            return None
 
+        Raises:
+            NotFoundError: If inquiry not found
+            DatabaseError: If database operation fails
+        """
+        try:
+            inquiry = self.db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
+            if not inquiry:
+                raise NotFoundError(f"Inquiry not found: {inquiry_id}")
+
+            return {
+                "inquiry_id": inquiry.id,
+                "category": inquiry.classified_category,
+                "confidence": inquiry.confidence_score,
+                "risk_level": inquiry.risk_level,
+                "sentiment": inquiry.sentiment,
+                "complexity": inquiry.complexity_score,
+                "requires_human": inquiry.requires_human,
+                "is_urgent": inquiry.is_urgent,
+                "keywords": json.loads(inquiry.keywords) if inquiry.keywords else []
+            }
+        except NotFoundError:
+            raise
+        except SQLAlchemyError as e:
+            logger.error(f"Database error fetching analysis summary for inquiry {inquiry_id}: {str(e)}")
+            raise DatabaseError(f"Failed to fetch analysis summary: {str(e)}")
+
+    def analyze_and_generate_response(self, inquiry: Inquiry) -> Dict[str, any]:
+        """
+        Analyze inquiry and generate AI response
+
+        Args:
+            inquiry: Inquiry object (can be temporary, not saved to DB)
+
+        Returns:
+            Dict with response_text, confidence_score, category, risk_level
+
+        Raises:
+            ValidationError: If inquiry text is empty
+            APIError: If OpenAI API call fails
+        """
+        import openai
+        from ..config import settings
+
+        if not inquiry or not inquiry.inquiry_text or not inquiry.inquiry_text.strip():
+            raise ValidationError("Inquiry text is required for response generation")
+
+        text = inquiry.inquiry_text.lower()
+
+        # Classify category
+        category, confidence = self._classify_category(text)
+
+        # Assess risk level
+        risk_level = self._assess_risk_level(text, inquiry)
+
+        # Check API key
+        if not settings.OPENAI_API_KEY:
+            logger.warning("OpenAI API key not configured, using fallback response")
+            return self._get_fallback_response(category, risk_level)
+
+        # Generate AI response using OpenAI
+        try:
+            client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
+
+            # Build context
+            context_parts = []
+            if inquiry.customer_name:
+                context_parts.append(f"고객명: {inquiry.customer_name}")
+            if inquiry.product_name:
+                context_parts.append(f"상품명: {inquiry.product_name}")
+            if inquiry.order_number:
+                context_parts.append(f"주문번호: {inquiry.order_number}")
+
+            context = "\n".join(context_parts) if context_parts else "추가 정보 없음"
+
+            system_prompt = """당신은 쿠팡 판매자의 고객 응대 전문가입니다.
+고객 문의에 대해 친절하고 전문적인 답변을 작성해주세요.
+
+작성 가이드라인:
+1. 항상 정중하고 친절한 톤을 유지하세요
+2. 고객의 문의 내용을 정확히 파악하고 답변하세요
+3. 필요한 경우 구체적인 해결 방법을 제시하세요
+4. 답변은 200자 내외로 간결하게 작성하세요
+5. 인사말과 감사 표현을 포함하세요"""
+
+            user_prompt = f"""고객 문의 정보:
+{context}
+
+문의 내용:
+{inquiry.inquiry_text}
+
+위 문의에 대한 답변을 작성해주세요."""
+
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                max_tokens=500,
+                temperature=0.7
+            )
+
+            response_text = response.choices[0].message.content.strip()
+
+            # Adjust confidence based on analysis
+            final_confidence = confidence
+            if risk_level == "high":
+                final_confidence = min(confidence, 70)
+            elif risk_level == "medium":
+                final_confidence = min(confidence, 85)
+
+            logger.info(f"AI response generated successfully for inquiry")
+            return {
+                "response_text": response_text,
+                "confidence_score": final_confidence,
+                "category": category,
+                "risk_level": risk_level
+            }
+
+        except openai.AuthenticationError as e:
+            logger.error(f"OpenAI authentication failed: {str(e)}")
+            raise APIError("OpenAI API authentication failed. Please check your API key.")
+        except openai.RateLimitError as e:
+            logger.error(f"OpenAI rate limit exceeded: {str(e)}")
+            raise APIError("OpenAI API rate limit exceeded. Please try again later.")
+        except openai.APIConnectionError as e:
+            logger.error(f"OpenAI connection error: {str(e)}")
+            return self._get_fallback_response(category, risk_level)
+        except Exception as e:
+            logger.error(f"Error generating AI response: {str(e)}")
+            return self._get_fallback_response(category, risk_level)
+
+    def _get_fallback_response(self, category: str, risk_level: str) -> Dict[str, any]:
+        """
+        Get fallback response when AI generation fails
+
+        Args:
+            category: Classified category
+            risk_level: Risk level
+
+        Returns:
+            Fallback response dict
+        """
         return {
-            "inquiry_id": inquiry.id,
-            "category": inquiry.classified_category,
-            "confidence": inquiry.confidence_score,
-            "risk_level": inquiry.risk_level,
-            "sentiment": inquiry.sentiment,
-            "complexity": inquiry.complexity_score,
-            "requires_human": inquiry.requires_human,
-            "is_urgent": inquiry.is_urgent,
-            "keywords": json.loads(inquiry.keywords) if inquiry.keywords else []
+            "response_text": "안녕하세요, 고객님. 문의 주셔서 감사합니다.\n\n문의하신 내용에 대해 확인 후 신속하게 답변 드리겠습니다.\n\n감사합니다.",
+            "confidence_score": 60.0,
+            "category": category,
+            "risk_level": risk_level
         }

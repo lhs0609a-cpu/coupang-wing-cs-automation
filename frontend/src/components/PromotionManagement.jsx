@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import axios from 'axios'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -48,6 +48,9 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
   const [bulkApplyProgress, setBulkApplyProgress] = useState(null)
   const [copiedPolicies, setCopiedPolicies] = useState(null)  // 복사한 쿠폰 정책
   const [policySourceAccount, setPolicySourceAccount] = useState(null)  // 정책 복사할 원본 계정
+
+  // AbortController ref - 계정 변경 시 이전 요청 취소용
+  const abortControllerRef = useRef(null)
 
   // 쿠폰 설정 폼 상태
   const [couponForm, setCouponForm] = useState({
@@ -99,9 +102,21 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
   // Load config when account changes
   useEffect(() => {
     if (selectedAccount) {
-      // 계정 변경 시 먼저 상태 초기화
+      // 이전 요청 취소
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+      // 새 AbortController 생성
+      abortControllerRef.current = new AbortController()
+      const signal = abortControllerRef.current.signal
+
+      // 계정 변경 시 모든 상태 초기화
       setCopiedPolicies(null)
       setConfig(null)
+      setStatistics(null)
+      setTrackingList([])
+      setApplyLogs([])
+      setBulkApplyProgress(null)
       setCouponForm({
         is_enabled: false,
         apply_delay_days: 0,
@@ -127,13 +142,23 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
       setInstantCoupons([])
       setDownloadCoupons([])
 
-      // 새 계정 데이터 로드
-      loadConfig()
-      loadStatistics()
-      loadBulkApplyProgress()
-      loadContracts()
-      loadInstantCoupons('APPLIED')
-      loadDownloadCoupons('IN_PROGRESS')
+      // 현재 선택된 계정 ID를 캡처해서 API 호출에 전달
+      const accountId = selectedAccount
+
+      // 새 계정 데이터 로드 (계정 ID와 signal 전달)
+      loadConfig(accountId, signal)
+      loadStatistics(accountId, signal)
+      loadBulkApplyProgress(accountId, signal)
+      loadContracts(accountId, signal)
+      loadInstantCoupons('APPLIED', accountId, signal)
+      loadDownloadCoupons('IN_PROGRESS', accountId, signal)
+    }
+
+    // Cleanup: 컴포넌트 언마운트 또는 계정 변경 시 요청 취소
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
     }
   }, [selectedAccount])
 
@@ -153,9 +178,11 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
   // 진행 상황 폴링 (진행 중일 때만)
   useEffect(() => {
     let interval = null
-    if (bulkApplyProgress && (bulkApplyProgress.status === 'collecting' || bulkApplyProgress.status === 'applying')) {
+    if (selectedAccount && bulkApplyProgress && (bulkApplyProgress.status === 'collecting' || bulkApplyProgress.status === 'applying')) {
+      const currentAccountId = selectedAccount
       interval = setInterval(() => {
-        loadBulkApplyProgress()
+        // 폴링 시에도 현재 계정 ID를 전달
+        loadBulkApplyProgress(currentAccountId)
       }, 5000) // 5초마다 업데이트
     }
     return () => {
@@ -209,13 +236,18 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
     }
   }
 
-  const loadConfig = async () => {
-    if (!selectedAccount) return
+  const loadConfig = async (accountId = null, signal = null) => {
+    const targetAccount = accountId || selectedAccount
+    if (!targetAccount) return
     setLoading(true)
     try {
-      const response = await axios.get(`${apiBaseUrl}/promotion/config/${selectedAccount}`)
+      const response = await axios.get(`${apiBaseUrl}/promotion/config/${targetAccount}`, { signal })
       setConfig(response.data.config)
     } catch (error) {
+      if (axios.isCancel(error) || error.name === 'AbortError') {
+        console.log('Request cancelled:', targetAccount)
+        return
+      }
       console.error('Failed to load config:', error)
       setConfig(null)
     } finally {
@@ -224,26 +256,28 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
   }
 
   // 계약서 목록 로드
-  const loadContracts = async () => {
-    if (!selectedAccount) return
+  const loadContracts = async (accountId = null, signal = null) => {
+    const targetAccount = accountId || selectedAccount
+    if (!targetAccount) return
     try {
-      const response = await axios.get(`${apiBaseUrl}/promotion/contracts/${selectedAccount}`)
+      const response = await axios.get(`${apiBaseUrl}/promotion/contracts/${targetAccount}`, { signal })
       if (response.data.success) {
         setContracts(response.data.contracts || [])
       }
     } catch (error) {
+      if (axios.isCancel(error) || error.name === 'AbortError') return
       console.error('Failed to load contracts:', error)
       setContracts([])
     }
   }
 
-  const loadBulkApplyProgress = async () => {
-    if (!selectedAccount) return
+  const loadBulkApplyProgress = async (accountId = null, signal = null) => {
+    const targetAccount = accountId || selectedAccount
+    if (!targetAccount) return
     try {
-      const response = await axios.get(`${apiBaseUrl}/promotion/progress/${selectedAccount}`)
+      const response = await axios.get(`${apiBaseUrl}/promotion/progress/${targetAccount}`, { signal })
       if (response.data.success && response.data.progress) {
         setBulkApplyProgress(response.data.progress)
-        // 진행 중 상태 업데이트
         const status = response.data.progress.status
         setBulkApplyInProgress(status === 'collecting' || status === 'applying')
       } else {
@@ -251,35 +285,38 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
         setBulkApplyInProgress(false)
       }
     } catch (error) {
+      if (axios.isCancel(error) || error.name === 'AbortError') return
       console.error('Failed to load bulk apply progress:', error)
     }
   }
 
-  const loadInstantCoupons = async (status = 'APPLIED') => {
-    if (!selectedAccount) return
+  const loadInstantCoupons = async (status = 'APPLIED', accountId = null, signal = null) => {
+    const targetAccount = accountId || selectedAccount
+    if (!targetAccount) return
     try {
-      const response = await axios.get(`${apiBaseUrl}/promotion/coupons/instant/${selectedAccount}?status=${status}`)
+      const response = await axios.get(`${apiBaseUrl}/promotion/coupons/instant/${targetAccount}?status=${status}`, { signal })
       if (response.data.success) {
         setInstantCoupons(response.data.coupons || [])
       }
     } catch (error) {
+      if (axios.isCancel(error) || error.name === 'AbortError') return
       console.error('Failed to load instant coupons:', error)
     }
   }
 
-  const loadDownloadCoupons = async (status = 'IN_PROGRESS') => {
-    if (!selectedAccount) return
+  const loadDownloadCoupons = async (status = 'IN_PROGRESS', accountId = null, signal = null) => {
+    const targetAccount = accountId || selectedAccount
+    if (!targetAccount) return
     try {
-      const response = await axios.get(`${apiBaseUrl}/promotion/coupons/download/${selectedAccount}?status=${status}`)
+      const response = await axios.get(`${apiBaseUrl}/promotion/coupons/download/${targetAccount}?status=${status}`, { signal })
       if (response.data.success) {
         setDownloadCoupons(response.data.coupons || [])
       } else {
-        // API 미지원 등의 이유로 실패해도 빈 배열 설정
         setDownloadCoupons([])
       }
     } catch (error) {
+      if (axios.isCancel(error) || error.name === 'AbortError') return
       console.error('Failed to load download coupons:', error)
-      // 에러 발생 시 빈 배열로 설정 (UI 깨짐 방지)
       setDownloadCoupons([])
     }
   }
@@ -355,13 +392,16 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
     }
   }
 
-  const loadStatistics = async () => {
-    if (!selectedAccount) return
+  const loadStatistics = async (accountId = null, signal = null) => {
+    const targetAccount = accountId || selectedAccount
+    if (!targetAccount) return
     try {
-      const response = await axios.get(`${apiBaseUrl}/promotion/statistics/${selectedAccount}`)
+      const response = await axios.get(`${apiBaseUrl}/promotion/statistics/${targetAccount}`, { signal })
       setStatistics(response.data.statistics || response.data)
     } catch (error) {
+      if (axios.isCancel(error) || error.name === 'AbortError') return
       console.error('Failed to load statistics:', error)
+      setStatistics(null)
     }
   }
 

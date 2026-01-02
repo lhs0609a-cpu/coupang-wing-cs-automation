@@ -3,12 +3,14 @@ Coupang Accounts Management Router
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
 
 from ..database import get_db
 from ..models import CoupangAccount
+from ..exceptions import NotFoundError, ValidationError as AppValidationError, DatabaseError
 from loguru import logger
 
 
@@ -81,11 +83,17 @@ def get_all_accounts(
 
         return result
 
+    except SQLAlchemyError as e:
+        logger.error(f"Database error fetching accounts: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error occurred while fetching accounts"
+        )
     except Exception as e:
         logger.error(f"Error fetching accounts: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch accounts: {str(e)}"
+            detail="Failed to fetch accounts"
         )
 
 
@@ -97,15 +105,24 @@ def get_account(
     """
     특정 쿠팡 계정 조회
     """
-    account = db.query(CoupangAccount).filter(CoupangAccount.id == account_id).first()
+    try:
+        account = db.query(CoupangAccount).filter(CoupangAccount.id == account_id).first()
 
-    if not account:
+        if not account:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Account {account_id} not found"
+            )
+
+        return account.to_dict(include_keys=True)
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error fetching account {account_id}: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Account {account_id} not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error occurred"
         )
-
-    return account.to_dict(include_keys=True)
 
 
 @router.post("", response_model=CoupangAccountResponse, status_code=status.HTTP_201_CREATED)
@@ -151,12 +168,19 @@ def create_account(
 
     except HTTPException:
         raise
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Database error creating account: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error occurred while creating account"
+        )
     except Exception as e:
         db.rollback()
         logger.error(f"Error creating account: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create account: {str(e)}"
+            detail="Failed to create account"
         )
 
 
@@ -211,12 +235,19 @@ def update_account(
 
     except HTTPException:
         raise
-    except Exception as e:
+    except SQLAlchemyError as e:
         db.rollback()
-        logger.error(f"Error updating account: {str(e)}")
+        logger.error(f"Database error updating account {account_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update account: {str(e)}"
+            detail="Database error occurred while updating account"
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating account {account_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update account"
         )
 
 
@@ -251,12 +282,19 @@ def delete_account(
 
     except HTTPException:
         raise
-    except Exception as e:
+    except SQLAlchemyError as e:
         db.rollback()
-        logger.error(f"Error deleting account: {str(e)}")
+        logger.error(f"Database error deleting account {account_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete account: {str(e)}"
+            detail="Database error occurred while deleting account"
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting account {account_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete account"
         )
 
 
@@ -284,10 +322,17 @@ def mark_account_used(
 
     except HTTPException:
         raise
-    except Exception as e:
+    except SQLAlchemyError as e:
         db.rollback()
-        logger.error(f"Error marking account used: {str(e)}")
+        logger.error(f"Database error marking account {account_id} used: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update account: {str(e)}"
+            detail="Database error occurred"
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error marking account {account_id} used: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update account"
         )

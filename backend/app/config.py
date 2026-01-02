@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     ENVIRONMENT: str = "development"
 
+    # CORS Settings (comma-separated origins for production)
+    CORS_ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173"
+
     # Validation Settings
     CONFIDENCE_THRESHOLD: float = 80.0
     AUTO_APPROVE_THRESHOLD: float = 90.0

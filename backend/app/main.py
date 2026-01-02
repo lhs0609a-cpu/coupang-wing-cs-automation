@@ -141,11 +141,14 @@ app.add_middleware(RequestLoggingMiddleware)
 
 # Configure CORS - MUST BE LAST (so it executes FIRST, outermost)
 # This ensures preflight OPTIONS requests are handled before other middlewares
-# Allow all origins for production deployment (Vercel frontend)
+# Parse allowed origins from settings (comma-separated string)
+cors_origins = [origin.strip() for origin in settings.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
+# In production with specific frontend URL, use that; otherwise use configured origins
+allow_all_origins = settings.ENVIRONMENT == "production" and not cors_origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
-    allow_credentials=False,  # Must be False when allow_origins is ["*"]
+    allow_origins=["*"] if allow_all_origins else cors_origins,
+    allow_credentials=not allow_all_origins,  # Must be False when allow_origins is ["*"]
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
     allow_headers=["*"],
     expose_headers=["*"],

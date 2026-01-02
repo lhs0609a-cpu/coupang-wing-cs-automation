@@ -5,9 +5,11 @@ Collects and processes customer inquiries from Coupang Wing
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from loguru import logger
 
 from ..models import Inquiry, ActivityLog
+from ..exceptions import NotFoundError, ValidationError, APIError, DatabaseError
 from .coupang_api import CoupangAPIClient
 
 
@@ -22,6 +24,7 @@ class InquiryCollector:
 
     def collect_new_inquiries(
         self,
+        account_id: Optional[int] = None,
         inquiry_type: str = "online",
         status_filter: Optional[str] = None
     ) -> List[Inquiry]:
@@ -29,16 +32,23 @@ class InquiryCollector:
         Collect new inquiries from Coupang Wing
 
         Args:
+            account_id: Coupang account ID to collect inquiries from
             inquiry_type: Type of inquiries to collect ('online' or 'callcenter')
             status_filter: Filter by status (e.g., 'WAITING' for unanswered)
 
         Returns:
             List of newly collected Inquiry objects
         """
-        logger.info(f"Starting inquiry collection: type={inquiry_type}, status={status_filter}")
+        # Validate inquiry_type
+        if inquiry_type not in ("online", "callcenter"):
+            raise ValidationError(f"Invalid inquiry_type: {inquiry_type}. Must be 'online' or 'callcenter'")
+
+        logger.info(f"Starting inquiry collection: account={account_id}, type={inquiry_type}, status={status_filter}")
 
         try:
             # Fetch inquiries from API
+            # Note: account_id is used for logging/tracking only
+            # CoupangAPIClient already has vendor_id set in constructor
             if inquiry_type == "online":
                 response = self.api_client.get_online_inquiries(
                     status=status_filter or "WAITING",
@@ -49,16 +59,29 @@ class InquiryCollector:
                     partner_counseling_status="NO_ANSWER"  # Get unanswered inquiries
                 )
 
+            # Check API response status
+            response_code = response.get("code", "")
+            if response_code and response_code not in ("200", "SUCCESS", "OK"):
+                error_msg = response.get("message", "Unknown API error")
+                logger.error(f"Coupang API returned error: code={response_code}, message={error_msg}")
+                raise APIError(f"Coupang API error: {error_msg}")
+
             # Parse response and save to database
             inquiries = self._parse_and_save_inquiries(response, inquiry_type)
 
             logger.success(f"Collected {len(inquiries)} new inquiries")
             return inquiries
 
-        except Exception as e:
-            logger.error(f"Error collecting inquiries: {str(e)}")
-            self._log_activity("inquiry_collection_failed", error_message=str(e))
+        except (ValidationError, NotFoundError):
             raise
+        except SQLAlchemyError as e:
+            logger.error(f"Database error collecting inquiries: {str(e)}")
+            self._log_activity("inquiry_collection_failed", error_message=str(e))
+            raise DatabaseError(f"Database error while collecting inquiries: {str(e)}")
+        except Exception as e:
+            logger.error(f"API error collecting inquiries: {str(e)}")
+            self._log_activity("inquiry_collection_failed", error_message=str(e))
+            raise APIError(f"Failed to collect inquiries from Coupang API: {str(e)}")
 
     def _parse_and_save_inquiries(
         self,
@@ -78,10 +101,18 @@ class InquiryCollector:
         inquiries = []
 
         # Extract inquiry data from response
-        # Note: Actual structure depends on Coupang API response format
-        inquiry_data_list = api_response.get("data", [])
-        if isinstance(inquiry_data_list, dict):
-            inquiry_data_list = inquiry_data_list.get("inquiries", [])
+        # Coupang API response structure: { "code": "...", "message": "...", "data": { "content": [...] } }
+        # or sometimes: { "code": "...", "data": [...] }
+        inquiry_data_list = []
+
+        data = api_response.get("data", [])
+        if isinstance(data, dict):
+            # Try common Coupang API response structures
+            inquiry_data_list = data.get("content", []) or data.get("inquiries", []) or data.get("items", [])
+        elif isinstance(data, list):
+            inquiry_data_list = data
+
+        logger.info(f"Parsed {len(inquiry_data_list)} inquiries from API response")
 
         for data in inquiry_data_list:
             try:
@@ -200,12 +231,19 @@ class InquiryCollector:
         Returns:
             List of pending Inquiry objects
         """
-        return self.db.query(Inquiry).filter(
-            Inquiry.status == "pending"
-        ).order_by(
-            Inquiry.is_urgent.desc(),
-            Inquiry.inquiry_date.asc()
-        ).limit(limit).all()
+        if limit < 1 or limit > 500:
+            raise ValidationError(f"Invalid limit: {limit}. Must be between 1 and 500")
+
+        try:
+            return self.db.query(Inquiry).filter(
+                Inquiry.status == "pending"
+            ).order_by(
+                Inquiry.is_urgent.desc(),
+                Inquiry.inquiry_date.asc()
+            ).limit(limit).all()
+        except SQLAlchemyError as e:
+            logger.error(f"Database error fetching pending inquiries: {str(e)}")
+            raise DatabaseError(f"Failed to fetch pending inquiries: {str(e)}")
 
     def mark_inquiry_as_processing(self, inquiry_id: int):
         """
@@ -213,9 +251,16 @@ class InquiryCollector:
 
         Args:
             inquiry_id: Inquiry ID
+
+        Raises:
+            NotFoundError: If inquiry not found
+            DatabaseError: If database operation fails
         """
-        inquiry = self.db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
-        if inquiry:
+        try:
+            inquiry = self.db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
+            if not inquiry:
+                raise NotFoundError(f"Inquiry not found: {inquiry_id}")
+
             inquiry.status = "processing"
             inquiry.updated_at = datetime.utcnow()
             self.db.commit()
@@ -224,6 +269,12 @@ class InquiryCollector:
                 action="inquiry_processing_started",
                 inquiry_id=inquiry_id
             )
+        except NotFoundError:
+            raise
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logger.error(f"Database error marking inquiry as processing: {str(e)}")
+            raise DatabaseError(f"Failed to update inquiry status: {str(e)}")
 
     def mark_inquiry_as_processed(self, inquiry_id: int):
         """
@@ -231,9 +282,16 @@ class InquiryCollector:
 
         Args:
             inquiry_id: Inquiry ID
+
+        Raises:
+            NotFoundError: If inquiry not found
+            DatabaseError: If database operation fails
         """
-        inquiry = self.db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
-        if inquiry:
+        try:
+            inquiry = self.db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
+            if not inquiry:
+                raise NotFoundError(f"Inquiry not found: {inquiry_id}")
+
             inquiry.status = "processed"
             inquiry.updated_at = datetime.utcnow()
             self.db.commit()
@@ -242,6 +300,12 @@ class InquiryCollector:
                 action="inquiry_processed",
                 inquiry_id=inquiry_id
             )
+        except NotFoundError:
+            raise
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logger.error(f"Database error marking inquiry as processed: {str(e)}")
+            raise DatabaseError(f"Failed to update inquiry status: {str(e)}")
 
     def mark_inquiry_as_failed(self, inquiry_id: int, error_message: str = ""):
         """
@@ -250,9 +314,16 @@ class InquiryCollector:
         Args:
             inquiry_id: Inquiry ID
             error_message: Error message
+
+        Raises:
+            NotFoundError: If inquiry not found
+            DatabaseError: If database operation fails
         """
-        inquiry = self.db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
-        if inquiry:
+        try:
+            inquiry = self.db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
+            if not inquiry:
+                raise NotFoundError(f"Inquiry not found: {inquiry_id}")
+
             inquiry.status = "failed"
             inquiry.updated_at = datetime.utcnow()
             self.db.commit()
@@ -262,6 +333,12 @@ class InquiryCollector:
                 inquiry_id=inquiry_id,
                 error_message=error_message
             )
+        except NotFoundError:
+            raise
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logger.error(f"Database error marking inquiry as failed: {str(e)}")
+            raise DatabaseError(f"Failed to update inquiry status: {str(e)}")
 
     def flag_for_human_review(self, inquiry_id: int, reason: str = ""):
         """
@@ -270,9 +347,16 @@ class InquiryCollector:
         Args:
             inquiry_id: Inquiry ID
             reason: Reason for flagging
+
+        Raises:
+            NotFoundError: If inquiry not found
+            DatabaseError: If database operation fails
         """
-        inquiry = self.db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
-        if inquiry:
+        try:
+            inquiry = self.db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
+            if not inquiry:
+                raise NotFoundError(f"Inquiry not found: {inquiry_id}")
+
             inquiry.requires_human = True
             inquiry.updated_at = datetime.utcnow()
             self.db.commit()
@@ -284,6 +368,12 @@ class InquiryCollector:
             )
 
             logger.warning(f"Inquiry {inquiry_id} flagged for human review: {reason}")
+        except NotFoundError:
+            raise
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logger.error(f"Database error flagging inquiry for human review: {str(e)}")
+            raise DatabaseError(f"Failed to flag inquiry for human review: {str(e)}")
 
     def _log_activity(
         self,
@@ -324,13 +414,20 @@ class InquiryCollector:
 
         Returns:
             Dictionary with inquiry statistics
+
+        Raises:
+            DatabaseError: If database operation fails
         """
-        return {
-            "total": self.db.query(Inquiry).count(),
-            "pending": self.db.query(Inquiry).filter(Inquiry.status == "pending").count(),
-            "processing": self.db.query(Inquiry).filter(Inquiry.status == "processing").count(),
-            "processed": self.db.query(Inquiry).filter(Inquiry.status == "processed").count(),
-            "failed": self.db.query(Inquiry).filter(Inquiry.status == "failed").count(),
-            "requires_human": self.db.query(Inquiry).filter(Inquiry.requires_human == True).count(),
-            "urgent": self.db.query(Inquiry).filter(Inquiry.is_urgent == True).count()
-        }
+        try:
+            return {
+                "total": self.db.query(Inquiry).count(),
+                "pending": self.db.query(Inquiry).filter(Inquiry.status == "pending").count(),
+                "processing": self.db.query(Inquiry).filter(Inquiry.status == "processing").count(),
+                "processed": self.db.query(Inquiry).filter(Inquiry.status == "processed").count(),
+                "failed": self.db.query(Inquiry).filter(Inquiry.status == "failed").count(),
+                "requires_human": self.db.query(Inquiry).filter(Inquiry.requires_human == True).count(),
+                "urgent": self.db.query(Inquiry).filter(Inquiry.is_urgent == True).count()
+            }
+        except SQLAlchemyError as e:
+            logger.error(f"Database error fetching inquiry stats: {str(e)}")
+            raise DatabaseError(f"Failed to fetch inquiry statistics: {str(e)}")

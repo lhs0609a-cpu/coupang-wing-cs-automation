@@ -23,19 +23,46 @@ import {
   ChevronUp,
   Eye,
   History,
-  Calendar
+  Calendar,
+  Download,
+  ShoppingBag,
+  PenTool,
+  Sparkles,
+  Copy,
+  User,
+  Package,
+  Hash
 } from 'lucide-react'
 import AutomationLogs from './AutomationLogs'
 import TutorialButton from './TutorialButton'
 import '../styles/InquiryManagement.css'
 
-const InquiryManagement = ({ responses = [], onApprove, onReject, loading, apiBaseUrl, showNotification }) => {
+const InquiryManagement = ({ responses = [], onApprove, onReject, loading, apiBaseUrl, showNotification, onRefresh }) => {
   const [activeSubTab, setActiveSubTab] = useState('responses') // 'responses', 'history', 'logs', 'settings'
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [editingId, setEditingId] = useState(null)
   const [editedText, setEditedText] = useState('')
   const [expandedIds, setExpandedIds] = useState(new Set())
+
+  // 쿠팡 계정 및 문의 수집 상태
+  const [accounts, setAccounts] = useState([])
+  const [selectedAccount, setSelectedAccount] = useState(null)
+  const [collecting, setCollecting] = useState(false)
+  const [inquiryType, setInquiryType] = useState('online') // online, return, exchange
+
+  // 수동 기입 상태
+  const [manualInquiry, setManualInquiry] = useState({
+    customer_name: '',
+    product_name: '',
+    order_number: '',
+    inquiry_text: ''
+  })
+  const [generating, setGenerating] = useState(false)
+  const [generatedResponse, setGeneratedResponse] = useState(null)
+  const [editedResponse, setEditedResponse] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   // History state (all responses including completed)
   const [allResponses, setAllResponses] = useState([])
@@ -59,14 +86,157 @@ const InquiryManagement = ({ responses = [], onApprove, onReject, loading, apiBa
   const [responseStyles, setResponseStyles] = useState([])
   const [settingsLoading, setSettingsLoading] = useState(false)
 
-  // Load GPT settings on mount
+  // Load accounts and GPT settings on mount
   useEffect(() => {
     if (apiBaseUrl) {
+      loadAccounts()
       loadGptSettings()
       loadAvailableModels()
       loadResponseStyles()
     }
   }, [apiBaseUrl])
+
+  // 쿠팡 계정 로드
+  const loadAccounts = async () => {
+    try {
+      const response = await axios.get(`${apiBaseUrl}/coupang-accounts`)
+      setAccounts(response.data)
+      if (response.data.length > 0 && !selectedAccount) {
+        setSelectedAccount(response.data[0].id)
+      }
+    } catch (error) {
+      console.error('Failed to load accounts:', error)
+    }
+  }
+
+  // 쿠팡 문의 수집
+  const collectInquiries = async () => {
+    if (!selectedAccount) {
+      showNotification?.('계정을 선택해주세요', 'error')
+      return
+    }
+
+    setCollecting(true)
+    try {
+      const response = await axios.post(`${apiBaseUrl}/inquiries/collect`, {
+        account_id: selectedAccount,
+        inquiry_type: inquiryType,
+        status_filter: 'WAITING'
+      })
+
+      if (response.data.success) {
+        const count = response.data.count || 0
+        if (count > 0) {
+          showNotification?.(`${count}개의 새 문의를 수집했습니다`, 'success')
+          // 데이터 새로고침
+          onRefresh?.()
+        } else {
+          showNotification?.('새로운 문의가 없습니다', 'info')
+        }
+      }
+    } catch (error) {
+      console.error('Failed to collect inquiries:', error)
+      showNotification?.('문의 수집에 실패했습니다', 'error')
+    } finally {
+      setCollecting(false)
+    }
+  }
+
+  // 수동 기입 - AI 답변 생성
+  const generateManualResponse = async () => {
+    if (!manualInquiry.inquiry_text.trim()) {
+      showNotification?.('문의 내용을 입력해주세요', 'error')
+      return
+    }
+
+    setGenerating(true)
+    setGeneratedResponse(null)
+    try {
+      const response = await axios.post(`${apiBaseUrl}/inquiries/manual/generate`, {
+        account_id: selectedAccount,
+        customer_name: manualInquiry.customer_name,
+        product_name: manualInquiry.product_name,
+        order_number: manualInquiry.order_number,
+        inquiry_text: manualInquiry.inquiry_text
+      })
+
+      if (response.data.success) {
+        setGeneratedResponse(response.data)
+        setEditedResponse(response.data.response_text || '')
+        showNotification?.('답변이 생성되었습니다', 'success')
+      }
+    } catch (error) {
+      console.error('Failed to generate response:', error)
+      showNotification?.('답변 생성에 실패했습니다', 'error')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  // 수동 기입 - 답변 복사
+  const copyToClipboard = async () => {
+    const textToCopy = editedResponse || generatedResponse?.response_text
+    if (!textToCopy) return
+
+    try {
+      await navigator.clipboard.writeText(textToCopy)
+      setCopied(true)
+      showNotification?.('클립보드에 복사되었습니다', 'success')
+      setTimeout(() => setCopied(false), 2000)
+    } catch (error) {
+      showNotification?.('복사에 실패했습니다', 'error')
+    }
+  }
+
+  // 수동 기입 - 답변 제출 (저장)
+  const submitManualResponse = async () => {
+    if (!generatedResponse) return
+
+    setSubmitting(true)
+    try {
+      const response = await axios.post(`${apiBaseUrl}/inquiries/manual/submit`, {
+        account_id: selectedAccount,
+        customer_name: manualInquiry.customer_name,
+        product_name: manualInquiry.product_name,
+        order_number: manualInquiry.order_number,
+        inquiry_text: manualInquiry.inquiry_text,
+        response_text: editedResponse || generatedResponse.response_text,
+        confidence_score: generatedResponse.confidence_score
+      })
+
+      if (response.data.success) {
+        showNotification?.('답변이 저장되었습니다', 'success')
+        // 폼 초기화
+        setManualInquiry({
+          customer_name: '',
+          product_name: '',
+          order_number: '',
+          inquiry_text: ''
+        })
+        setGeneratedResponse(null)
+        setEditedResponse('')
+        // 데이터 새로고침
+        onRefresh?.()
+      }
+    } catch (error) {
+      console.error('Failed to submit response:', error)
+      showNotification?.('답변 저장에 실패했습니다', 'error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // 수동 기입 폼 초기화
+  const resetManualForm = () => {
+    setManualInquiry({
+      customer_name: '',
+      product_name: '',
+      order_number: '',
+      inquiry_text: ''
+    })
+    setGeneratedResponse(null)
+    setEditedResponse('')
+  }
 
   // Load history when tab changes
   useEffect(() => {
@@ -577,6 +747,225 @@ const InquiryManagement = ({ responses = [], onApprove, onReject, loading, apiBa
       {/* Show content based on active sub tab */}
       {activeSubTab === 'responses' ? (
         <>
+          {/* 쿠팡 문의 수집 섹션 */}
+          <div className="collect-section">
+            <div className="collect-header">
+              <h3>
+                <Download size={20} />
+                쿠팡 문의 수집
+              </h3>
+              <p>쿠팡 윙에서 새로운 고객 문의를 가져옵니다</p>
+            </div>
+            <div className="collect-controls">
+              <div className="control-group">
+                <label>계정 선택</label>
+                <select
+                  value={selectedAccount || ''}
+                  onChange={(e) => setSelectedAccount(parseInt(e.target.value))}
+                  className="account-select"
+                >
+                  <option value="">계정 선택</option>
+                  {accounts.map(account => (
+                    <option key={account.id} value={account.id}>
+                      {account.name} ({account.vendor_id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="control-group">
+                <label>문의 유형</label>
+                <select
+                  value={inquiryType}
+                  onChange={(e) => setInquiryType(e.target.value)}
+                  className="type-select"
+                >
+                  <option value="online">온라인 문의</option>
+                  <option value="return">반품 문의</option>
+                  <option value="exchange">교환 문의</option>
+                </select>
+              </div>
+              <button
+                className="collect-btn"
+                onClick={collectInquiries}
+                disabled={collecting || !selectedAccount}
+              >
+                {collecting ? (
+                  <>
+                    <RefreshCw size={18} className="spinning" />
+                    수집 중...
+                  </>
+                ) : (
+                  <>
+                    <ShoppingBag size={18} />
+                    문의 수집
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* 수동 기입 섹션 */}
+          <div className="manual-section">
+            <div className="manual-header">
+              <h3>
+                <PenTool size={20} />
+                수동 문의 입력
+              </h3>
+              <p>문의 내용을 직접 입력하고 AI 답변을 생성합니다</p>
+            </div>
+
+            <div className="manual-form">
+              <div className="form-row">
+                <div className="form-group">
+                  <label>
+                    <User size={16} />
+                    고객명
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="홍길동"
+                    value={manualInquiry.customer_name}
+                    onChange={(e) => setManualInquiry(prev => ({ ...prev, customer_name: e.target.value }))}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>
+                    <Package size={16} />
+                    상품명
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="상품명을 입력하세요"
+                    value={manualInquiry.product_name}
+                    onChange={(e) => setManualInquiry(prev => ({ ...prev, product_name: e.target.value }))}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>
+                    <Hash size={16} />
+                    주문번호
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="주문번호 (선택)"
+                    value={manualInquiry.order_number}
+                    onChange={(e) => setManualInquiry(prev => ({ ...prev, order_number: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group full-width">
+                <label>
+                  <MessageSquare size={16} />
+                  문의 내용 <span className="required">*</span>
+                </label>
+                <textarea
+                  placeholder="고객 문의 내용을 입력하세요..."
+                  rows={4}
+                  value={manualInquiry.inquiry_text}
+                  onChange={(e) => setManualInquiry(prev => ({ ...prev, inquiry_text: e.target.value }))}
+                />
+              </div>
+
+              <div className="manual-actions">
+                <button
+                  className="reset-btn"
+                  onClick={resetManualForm}
+                  disabled={generating}
+                >
+                  <X size={16} />
+                  초기화
+                </button>
+                <button
+                  className="generate-btn"
+                  onClick={generateManualResponse}
+                  disabled={generating || !manualInquiry.inquiry_text.trim()}
+                >
+                  {generating ? (
+                    <>
+                      <RefreshCw size={18} className="spinning" />
+                      생성 중...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={18} />
+                      AI 답변 생성
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* 생성된 답변 */}
+            <AnimatePresence>
+              {generatedResponse && (
+                <motion.div
+                  className="generated-response-section"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                >
+                  <div className="response-header">
+                    <h4>
+                      <Bot size={18} />
+                      AI 생성 답변
+                    </h4>
+                    <div className="response-meta">
+                      {generatedResponse.confidence_score && (
+                        <span className="confidence-badge">
+                          신뢰도: {generatedResponse.confidence_score.toFixed(1)}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <textarea
+                    className="response-edit-textarea"
+                    value={editedResponse}
+                    onChange={(e) => setEditedResponse(e.target.value)}
+                    rows={8}
+                  />
+
+                  <div className="response-actions">
+                    <button
+                      className={`copy-btn ${copied ? 'copied' : ''}`}
+                      onClick={copyToClipboard}
+                    >
+                      {copied ? (
+                        <>
+                          <CheckCircle size={16} />
+                          복사됨
+                        </>
+                      ) : (
+                        <>
+                          <Copy size={16} />
+                          복사
+                        </>
+                      )}
+                    </button>
+                    <button
+                      className="submit-btn"
+                      onClick={submitManualResponse}
+                      disabled={submitting}
+                    >
+                      {submitting ? (
+                        <>
+                          <RefreshCw size={16} className="spinning" />
+                          저장 중...
+                        </>
+                      ) : (
+                        <>
+                          <Send size={16} />
+                          저장하기
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
           {/* Search and Filter */}
           <div className="inquiry-controls">
             <div className="search-box">
