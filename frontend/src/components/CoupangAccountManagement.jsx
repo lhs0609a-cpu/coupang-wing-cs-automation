@@ -322,9 +322,32 @@ const CoupangAccountManagement = ({ apiBaseUrl, showNotification }) => {
                   <span className="info-value">{account.vendor_id}</span>
                 </div>
                 <div className="info-row">
+                  <span className="info-label">Access Key:</span>
+                  <span className={`info-value ${!account.access_key ? 'text-danger' : ''}`}>
+                    {account.access_key
+                      ? `${account.access_key.substring(0, 12)}...${account.access_key.substring(account.access_key.length - 4)}`
+                      : '⚠️ 미설정'}
+                  </span>
+                </div>
+                <div className="info-row">
+                  <span className="info-label">Secret Key:</span>
+                  <span className={`info-value ${!account.secret_key ? 'text-danger' : ''}`}>
+                    {account.secret_key
+                      ? `${account.secret_key.substring(0, 8)}...${account.secret_key.substring(account.secret_key.length - 4)}`
+                      : '⚠️ 미설정'}
+                  </span>
+                </div>
+                <div className="info-row">
                   <span className="info-label">윙 아이디:</span>
                   <span className="info-value">{account.wing_username}</span>
                 </div>
+                {(!account.access_key || !account.secret_key) && (
+                  <div className="info-row" style={{ marginTop: '8px' }}>
+                    <span className="badge badge-warning" style={{ backgroundColor: '#ff6b6b', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}>
+                      ⚠️ API 키가 없습니다. 수정 버튼을 눌러 입력해주세요.
+                    </span>
+                  </div>
+                )}
                 {account.last_used_at && (
                   <div className="info-row">
                     <span className="info-label">마지막 사용:</span>
