@@ -258,11 +258,22 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
   // 계약서 목록 로드
   const loadContracts = async (accountId = null, signal = null) => {
     const targetAccount = accountId || selectedAccount
-    if (!targetAccount) return
+    console.log('[PromotionManagement] loadContracts called, targetAccount:', targetAccount)
+    if (!targetAccount) {
+      console.warn('[PromotionManagement] loadContracts: No target account')
+      return
+    }
     try {
-      const response = await axios.get(`${apiBaseUrl}/promotion/contracts/${targetAccount}`, { signal })
-      if (response.data.success) {
-        setContracts(response.data.contracts || [])
+      const url = `${apiBaseUrl}/promotion/contracts/${targetAccount}`
+      console.log('[PromotionManagement] Fetching contracts from:', url)
+      const response = await axios.get(url, { signal })
+      console.log('[PromotionManagement] Contracts API response:', response.data)
+      // success 여부와 상관없이 contracts 배열이 있으면 설정
+      const contractList = response.data.contracts || []
+      console.log('[PromotionManagement] Setting contracts:', contractList.length, 'items')
+      setContracts(contractList)
+      if (!response.data.success) {
+        console.warn('Contracts API returned success: false', response.data.message)
       }
     } catch (error) {
       if (axios.isCancel(error) || error.name === 'AbortError') return
@@ -292,15 +303,27 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
 
   const loadInstantCoupons = async (status = 'APPLIED', accountId = null, signal = null) => {
     const targetAccount = accountId || selectedAccount
-    if (!targetAccount) return
+    console.log('[PromotionManagement] loadInstantCoupons called, targetAccount:', targetAccount, 'status:', status)
+    if (!targetAccount) {
+      console.warn('[PromotionManagement] loadInstantCoupons: No target account')
+      return
+    }
     try {
-      const response = await axios.get(`${apiBaseUrl}/promotion/coupons/instant/${targetAccount}?status=${status}`, { signal })
-      if (response.data.success) {
-        setInstantCoupons(response.data.coupons || [])
+      const url = `${apiBaseUrl}/promotion/coupons/instant/${targetAccount}?status=${status}`
+      console.log('[PromotionManagement] Fetching instant coupons from:', url)
+      const response = await axios.get(url, { signal })
+      console.log('[PromotionManagement] Instant coupons API response:', response.data)
+      // success 여부와 상관없이 coupons 배열이 있으면 설정
+      const coupons = response.data.coupons || []
+      console.log('[PromotionManagement] Setting instant coupons:', coupons.length, 'items')
+      setInstantCoupons(coupons)
+      if (!response.data.success) {
+        console.warn('Instant coupons API returned success: false', response.data.message)
       }
     } catch (error) {
       if (axios.isCancel(error) || error.name === 'AbortError') return
       console.error('Failed to load instant coupons:', error)
+      setInstantCoupons([])
     }
   }
 
@@ -309,10 +332,11 @@ const PromotionManagement = ({ apiBaseUrl, showNotification }) => {
     if (!targetAccount) return
     try {
       const response = await axios.get(`${apiBaseUrl}/promotion/coupons/download/${targetAccount}?status=${status}`, { signal })
-      if (response.data.success) {
-        setDownloadCoupons(response.data.coupons || [])
-      } else {
-        setDownloadCoupons([])
+      // success 여부와 상관없이 coupons 배열이 있으면 설정
+      const coupons = response.data.coupons || []
+      setDownloadCoupons(coupons)
+      if (!response.data.success) {
+        console.warn('Download coupons API returned success: false', response.data.message)
       }
     } catch (error) {
       if (axios.isCancel(error) || error.name === 'AbortError') return

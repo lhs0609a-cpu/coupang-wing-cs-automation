@@ -114,20 +114,26 @@ class CouponAutoSyncService:
         ).first()
 
         if not account:
-            return {"success": False, "message": "계정을 찾을 수 없습니다."}
+            return {"success": False, "message": "계정을 찾을 수 없습니다.", "coupons": []}
 
         client = self._get_api_client(account)
 
         try:
             result = client.get_instant_coupons(status=status)
-            if result.get("code") == 200:
+            logger.info(f"Instant coupons API response for account {coupang_account_id}: code={result.get('code')}, has_data={'data' in result}")
+
+            # code가 200 또는 "200" 또는 "SUCCESS"인 경우, 또는 data가 있는 경우 성공으로 처리
+            code = result.get("code")
+            if code == 200 or str(code) == "200" or code == "SUCCESS" or "data" in result:
                 coupons = result.get("data", {}).get("content", [])
+                logger.info(f"Found {len(coupons)} instant coupons for account {coupang_account_id}")
                 return {"success": True, "coupons": coupons}
             else:
-                return {"success": False, "message": result.get("message", "조회 실패")}
+                logger.warning(f"Instant coupons API returned unexpected code: {code}, message: {result.get('message')}")
+                return {"success": False, "message": result.get("message", "조회 실패"), "coupons": []}
         except Exception as e:
             logger.error(f"Error fetching instant coupons: {str(e)}")
-            return {"success": False, "message": str(e)}
+            return {"success": False, "message": str(e), "coupons": []}
 
     def get_download_coupons(self, coupang_account_id: int, status: str = "IN_PROGRESS") -> Dict[str, Any]:
         """다운로드쿠폰 목록 조회"""
