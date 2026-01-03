@@ -85,10 +85,10 @@ const CoupangAccountManagement = ({ apiBaseUrl, showNotification }) => {
     setFormData({
       name: account.name || '',
       vendor_id: account.vendor_id || '',
-      access_key: '', // 보안상 비워둠
-      secret_key: '', // 보안상 비워둠
+      access_key: account.access_key || '', // 현재 값 표시
+      secret_key: account.secret_key || '', // 현재 값 표시
       wing_username: account.wing_username || '',
-      wing_password: '' // 보안상 비워둠
+      wing_password: account.wing_password || '' // 현재 값 표시
     })
     setShowForm(true)
   }
@@ -204,7 +204,7 @@ const CoupangAccountManagement = ({ apiBaseUrl, showNotification }) => {
                     <div className="form-group">
                       <label>Secret Key *</label>
                       <input
-                        type="password"
+                        type="text"
                         value={formData.secret_key}
                         onChange={(e) => setFormData({ ...formData, secret_key: e.target.value })}
                         placeholder={editingAccount ? '변경 시에만 입력' : '쿠팡 API Secret Key'}
@@ -232,7 +232,7 @@ const CoupangAccountManagement = ({ apiBaseUrl, showNotification }) => {
                     <div className="form-group">
                       <label>쿠팡 윙 비밀번호 *</label>
                       <input
-                        type="password"
+                        type="text"
                         value={formData.wing_password}
                         onChange={(e) => setFormData({ ...formData, wing_password: e.target.value })}
                         placeholder={editingAccount ? '변경 시에만 입력' : '쿠팡 윙 로그인 비밀번호'}
